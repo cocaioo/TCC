@@ -12,7 +12,7 @@ sendo construído e testado com **dados sintéticos** gerados por este repositó
 
 - **Uma etapa por vez**, com o conceito explicado antes do código.
 - **Módulos Python (`.py`)**, sem notebooks.
-- **Cada etapa tem um plano versionado em `plans/`**, com decisões, o que foi implementado e histórico, para dar
+- **Cada passo tem um plano versionado em `plans/`**, com decisões, o que foi implementado e histórico, para dar
   rastreabilidade.
 - Dados nunca vão para o git: `data/` está no `.gitignore` (os reais serão privados; os sintéticos são regeneráveis).
 
@@ -24,7 +24,7 @@ sendo construído e testado com **dados sintéticos** gerados por este repositó
 |---|---|
 | Estado | **Concluída** |
 | Código | `gerador_seed.py`, `tests/test_gerador_seed.py` |
-| Plano | [`plans/seed-plan.md`](plans/seed-plan.md) |
+| Plano | Removido de `plans/`; fica no histórico do git (`git show 8cc96a9:plans/seed-plan.md`) |
 
 Gera um CSV com 1 linha por recém-nascido e 99 colunas (97 preditoras, `id_paciente` e `sepse_tardia`), com as variáveis
 dos Quadros 2 e 3 do projeto, desfecho com prevalência configurável (padrão 20%), sinal clínico plausível, exames
@@ -35,7 +35,7 @@ seriados (`_pre` e `_pos24h`) e valores ausentes.
 | | |
 |---|---|
 | Código | `preprocessamento.py`, `tests/test_preprocessamento.py` |
-| Plano | [`plans/preprocessamento-plan.md`](plans/preprocessamento-plan.md) |
+| Planos | [passo 1](plans/preprocessamento-passo1-plan.md), [passo 2](plans/preprocessamento-passo2-plan.md), [passo 3](plans/preprocessamento-passo3-plan.md), [passo 4](plans/preprocessamento-passo4-plan.md) |
 
 | Passo | O que é, em linguagem simples | Estado |
 |---|---|---|
@@ -96,7 +96,7 @@ taxas de dados ausentes) e `--seed` (mesma semente gera exatamente o mesmo CSV).
 gerador_seed.py            gerador de dados sintéticos
 preprocessamento.py        auditoria, divisão treino/teste e pré-processador (sklearn Pipeline, sem ajuste)
 tests/                     testes automáticos (pytest)
-plans/                     planos versionados, um por etapa
+plans/                     planos versionados, um por passo
 data/                      CSVs gerados (fora do git)
 Projeto_sepse_07_07.pdf    projeto de pesquisa (fonte dos requisitos)
 requirements.txt           dependências
