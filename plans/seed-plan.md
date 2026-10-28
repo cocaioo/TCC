@@ -229,10 +229,13 @@ na `_pos24h`. Distribuições gerais plausíveis (peso médio ≈ 2.000 g; 41% c
   programados assim. Serve para validar o pipeline de ponta a ponta, não para tirar conclusões clínicas.
 - As relações reais são mais complexas (interações, ausência informativa); o desempenho com dados reais deve ser pior.
 - Ausentes são MCAR; na prática a ausência costuma depender da gravidade (ex.: PCT pedida a quem parece mais grave).
-- **qSOFA e NEWS2 com cortes de adulto quase não variam em neonatos.** No seed 42, `qsofa` fica entre 1 e 3 e `news2`
-  entre 6 e 17: FR ≥ 22 e PAS ≤ 100 valem para praticamente todo neonato, e FC/FR neonatais normais já pontuam alto.
-  É coerente com a ressalva do próprio PDF (p. 33) e foi implementado como o PDF manda. Na prática esses escores
-  carregam pouca informação neste conjunto.
+- **qSOFA e NEWS2 com cortes de adulto saturam em neonatos.** No seed 42, `qsofa` só assume 2 (48%) ou 3 (52%), quase
+  nunca 0 ou 1, e `news2` fica entre 6 e 17: FR ≥ 22 e PAS ≤ 100 valem para praticamente todo neonato, e FC/FR neonatais
+  normais já pontuam alto. É coerente com a ressalva do próprio PDF (p. 33) e foi implementado como o PDF manda.
+  *Correção (2026-10-28, após a auditoria do passo 1 do pré-processamento):* a versão anterior deste texto dizia que
+  esses escores "carregam pouca informação". Isso estava errado: eles variam e, no seed, discriminam (AUC isolada do
+  `news2` = 0,83), porque herdam o sinal que plantei em FC, FR, SpO2, PAS e Glasgow. Em dado real, com cortes de adulto,
+  o poder discriminativo tende a ser menor; é um ponto a observar, não uma conclusão.
 
 ## 9. Pendências e próximos passos
 
