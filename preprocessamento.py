@@ -5,6 +5,8 @@ nada do gerador: os grupos de colunas abaixo são constantes próprias.
 
 Passo 1: carregar e auditar (nada aqui "aprende" dos dados nem altera o DataFrame).
 Passo 2: dividir em treino e teste, de forma estratificada, e gravar os dois conjuntos.
+Passo 3: pré-processador (hemocultura, log1p, imputação pela mediana, indicador de ausência, escala, one-hot).
+         Ele é devolvido SEM ajuste: só o treino (ou cada dobra da validação cruzada) o ajusta, para não vazar.
 
 Uso:
     python preprocessamento.py --entrada data/seed_sepse.csv --seed 42
@@ -16,7 +18,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import MissingIndicator, SimpleImputer
 from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
 # --------------------------------------------------------------------------------------
 # Grupos de colunas (ajustar quando o conector real existir)
@@ -44,6 +50,25 @@ DIAS_UTIN_MINIMO = 3
 # Limiares da auditoria
 LIMIAR_QUASE_CONSTANTE = 0.95  # fração mínima do valor mais frequente
 LIMIAR_AUC_VAZAMENTO = 0.95  # AUC de uma coluna sozinha acima disso é suspeita de vazamento
+
+# Transformação (passo 3)
+COLS_CATEGORICAS = [
+    "sexo", "tipo_parto", "raca_cor_rn", "raca_cor_mae", "colonizacao",
+    "hemocultura_resultado", "hemocultura_agente", "perfil_sensibilidade",
+]
+SUFIXOS_EXAME = ("_pre", "_pos24h")  # janela da última medida antes da suspeita e das primeiras até 24 h depois
+
+# Exames de cauda longa (poucos valores muito altos): recebem log1p antes da padronização. Lista por conhecimento
+# clínico, e não calculada dos dados, para valer igual com o dado real. Ficam de fora os simétricos (glicemia,
+# hemoglobina, hematócrito, pH, Na, K, Ca ionizado) e a relação IT, que já é limitada a 0-1.
+BASES_LOG1P = [
+    "leucocitos", "neutrofilos_seg", "bastoes", "plaquetas", "pcr", "pct", "creatinina",
+    "bilirrubina_total", "bilirrubina_direta", "bilirrubina_indireta", "lactato", "tgo", "tgp",
+    "relacao_neutrofilos_linfocitos",
+]
+
+# Só exames com pelo menos esta fração de ausentes (no treino) ganham a coluna "foi medido?".
+LIMIAR_INDICADOR_PADRAO = 0.20
 
 
 # --------------------------------------------------------------------------------------
@@ -167,6 +192,87 @@ def separar_x_y(df):
     return df.drop(columns=[COL_ID, COL_ALVO, COL_EXCLUIDA], errors="ignore"), df[COL_ALVO]
 
 
+# --------------------------------------------------------------------------------------
+# Transformar
+# --------------------------------------------------------------------------------------
+
+
+def tratar_ausentes_estruturais(X):
+    """Hemocultura: o vazio de `agente` e `perfil_sensibilidade` quase sempre significa "não se aplica".
+
+    Cultura negativa não tem agente; isso não é dado perdido e não pode ser imputado com mediana ou moda.
+    Função pura: não aprende nada dos dados, então pode rodar antes da divisão ou dentro de cada dobra.
+    """
+    X = X.copy()
+    resultado = X["hemocultura_resultado"]
+    preenchimento = np.select(
+        [resultado == "negativa", resultado == "positiva"], ["nao_se_aplica", "nao_informado"],
+        default="nao_realizada")
+    for coluna in ("hemocultura_agente", "perfil_sensibilidade"):
+        X[coluna] = X[coluna].where(X[coluna].notna(), preenchimento)
+    X["hemocultura_resultado"] = resultado.fillna("nao_realizada")
+    return X
+
+
+def aplicar_log1p(X):
+    """`log1p` nos exames de cauda longa (BASES_LOG1P, nas duas janelas). Função pura; NaN passa intacto."""
+    colunas = [f"{base}{sufixo}" for base in BASES_LOG1P for sufixo in SUFIXOS_EXAME
+               if f"{base}{sufixo}" in X.columns]
+    if (X[colunas] <= -1).any().any():
+        raise ValueError("valor <= -1 em exame com log1p (ex.: código de ausente do sistema, como -999)")
+    X = X.copy()
+    X[colunas] = np.log1p(X[colunas])
+    return X
+
+
+def _para_float(X):
+    """Matriz final com um único tipo (float): os indicadores saem como bool e as binárias como int."""
+    return X.astype(float)
+
+
+def construir_preprocessador(X_treino, limiar_indicador=LIMIAR_INDICADOR_PADRAO):
+    """Devolve o pré-processador (`Pipeline` do scikit-learn) SEM ajuste; saída em DataFrame com nomes de colunas.
+
+    Etapas: hemocultura -> log1p -> ColumnTransformer com
+      binárias (0/1)       passam sem escala;
+      numéricas e exames   mediana do treino -> padronização;
+      indicador de ausência ("foi medido?") só para exames com ausência >= `limiar_indicador` no treino;
+      categóricas          ausente vira "ausente" -> one-hot (categoria nova no teste vira zeros).
+
+    `X_treino` só é consultado para decidir QUAIS colunas entram em cada ramo (binárias; exames acima do limiar);
+    nenhum valor é aprendido aqui nem o alvo é usado. Os valores (medianas, médias, desvios) só são aprendidos
+    quando o pipeline é ajustado, com o treino ou com cada dobra da validação cruzada.
+    """
+    categoricas = [c for c in COLS_CATEGORICAS if c in X_treino.columns]
+    exames = [c for c in X_treino.columns if c.endswith(SUFIXOS_EXAME)]
+    binarias = []
+    for coluna in X_treino.columns:
+        valores = set(X_treino[coluna].dropna().unique())
+        if coluna not in categoricas and coluna not in exames and valores and valores <= {0, 1}:
+            binarias.append(coluna)
+    numericas = [c for c in X_treino.columns if c not in categoricas and c not in binarias]
+
+    taxa_ausente = X_treino[exames].isna().mean()
+    com_indicador = taxa_ausente[taxa_ausente >= limiar_indicador].index.tolist()
+
+    colunas = ColumnTransformer([
+        ("bin", "passthrough", binarias),
+        ("num", Pipeline([("imputar", SimpleImputer(strategy="median")), ("escalar", StandardScaler())]),
+         numericas),
+        ("ind", MissingIndicator(features="all"), com_indicador),
+        ("cat", Pipeline([("imputar", SimpleImputer(strategy="constant", fill_value="ausente")),
+                          ("codificar", OneHotEncoder(handle_unknown="ignore", drop="if_binary",
+                                                      sparse_output=False))]), categoricas),
+    ], verbose_feature_names_out=False)
+
+    return Pipeline([
+        ("estrutural", FunctionTransformer(tratar_ausentes_estruturais)),
+        ("log1p", FunctionTransformer(aplicar_log1p)),
+        ("colunas", colunas),
+        ("float", FunctionTransformer(_para_float)),
+    ]).set_output(transform="pandas")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Auditoria e pré-processamento dos dados de sepse neonatal.")
     parser.add_argument("--entrada", type=Path, default=Path("data/seed_sepse.csv"))
@@ -189,6 +295,12 @@ def main():
               f"({parte[COL_ALVO].mean():.1%})")
     X, _ = separar_x_y(treino)
     print(f"  variáveis de entrada (X): {X.shape[1]}")
+
+    # O teste NÃO é transformado aqui: só é aberto na avaliação final.
+    matriz = construir_preprocessador(X).fit_transform(X)
+    indicadores = int(matriz.columns.str.startswith("missingindicator_").sum())
+    print(f"  matriz do treino após o pré-processador: {matriz.shape[0]} x {matriz.shape[1]} "
+          f"({indicadores} indicadores de ausência), {int(matriz.isna().sum().sum())} ausentes")
 
 
 if __name__ == "__main__":

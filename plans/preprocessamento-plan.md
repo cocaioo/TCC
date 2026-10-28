@@ -62,12 +62,19 @@ leucócitos, TGO) recebem `log1p` antes da padronização para que poucos valore
 | P1 | Vazamento de alvo | Excluir sempre `dias_ate_dx_sepse`; as demais de `VARS_RISCO_VAZAMENTO` ficam com interruptor `excluir_vazamento` (padrão: manter) | `dias_ate_dx_sepse` é NaN se e somente se não houve sepse (prevê o alvo com 100% de acerto); as outras são preditoras previstas no PDF e permitem comparar com/sem | Usuário |
 | P2 | Imputação | Mediana + indicador de ausência como padrão; `knn` e `iterativo` disponíveis por parâmetro para comparar depois | Linha de base simples, robusta a outliers e explicável | Usuário |
 | P3 | Nome e local do plano | `plans/preprocessamento-plan.md` | Um arquivo por etapa do KDD | Usuário |
-| P4 | Indicador de ausência só em exames com taxa de ausência no treino ≥ 10% (`limiar_indicador`) | Parâmetro | Limita o aumento de colunas (exames com 2–5% de ausentes quase não informam) | Proposta (a julgar) |
+| P4 | Indicador de ausência só em exames com taxa de ausência no treino ≥ **20%** (`limiar_indicador`) | Parâmetro | Limita o aumento de colunas. *Alterado de 10% para 20% em 2026-10-28:* com 10% o protótipo gerava 32 indicadores (matriz de 153 colunas), porque as medidas `_pos24h` têm 10 p.p. a mais de ausentes por construção; com 20% são 11 (132 colunas) | Usuário (após ver o protótipo) |
 | P5 | Divisão | 80/20 estratificada, `random_state` fixo, gravada em `data/treino.csv` e `data/teste.csv` | p. 45; reprodutível e auditável (pasta `data/` fora do git) | PDF |
 | P6 | Pré-processador não ajustado + saída em `DataFrame` | `set_output(transform="pandas")` | Mantém nomes de colunas para o SHAP e evita vazamento (C1) | Proposta |
 | P7 | Colapso das 97 preditoras (`_pre`/`_pos24h`) | **Não nesta etapa** | Decisão D4 do seed: colapsar só se necessário, depois de ver o desempenho | Usuário (seed) |
 | P8 | Dependência nova | `scikit-learn` (1.9.1 instala no Python 3.14; verificado com `pip install --dry-run`) | Imputers, scalers, `ColumnTransformer`. `imbalanced-learn` e `xgboost` ficam para a etapa de modelos | Proposta |
 | P9 | `id_paciente` e `sepse_tardia` | Fora das variáveis de entrada (`X`); alvo vira `y` | Identificador não é preditor | Proposta |
+| P10 | `log1p` em exames de cauda longa | Lista **explícita** de 14 bases (28 colunas): leucócitos, neutrófilos, bastões, plaquetas, PCR, PCT, creatinina, bilirrubinas (3), lactato, TGO, TGP, relação neutrófilos/linfócitos | Usuário (aprovado); lista por conhecimento clínico e não calculada dos dados, para valer igual no dado real |
+| P11 | Fora do `log1p` | Glicemia, hemoglobina, hematócrito, pH, Na, K, Ca ionizado (simétricos) e `relacao_it` (limitada a 0–1, assimetria 0,4) | Proposta |
+| P12 | Colunas binárias | Detectadas no treino (valores ⊆ {0,1}, não vazias) e passam sem escala | Proposta: preserva a leitura "sim/não" no SHAP |
+| P13 | One-hot | `OneHotEncoder(handle_unknown="ignore", drop="if_binary")`: `sexo` e `tipo_parto` viram 1 coluna | Proposta |
+| P14 | Ausente em categórica fora da hemocultura | Vira a categoria `"ausente"` | Proposta (robustez para o dado real) |
+| P15 | Ausente numérico fora dos exames | Mediana do treino | Proposta (no seed não ocorre; no dado real pode) |
+| P16 | Passos sem aprendizado (hemocultura, `log1p`, conversão para `float`) | `FunctionTransformer` dentro do mesmo `Pipeline` | Proposta: nada é aprendido, então não vaza; o pré-processador é um objeto só |
 
 ## 4. Projeto
 
@@ -126,9 +133,39 @@ construir_preprocessador ──► Pipeline([prep, SMOTE*, modelo]) ──► Gr
 |---|---|---|
 | 1. Carregar e auditar | **Concluído** (`preprocessamento.py`: `carregar`, `auditar`, `imprimir_auditoria`; 7 testes em `tests/test_preprocessamento.py`) | Seed 42: 1000 linhas, 97 preditoras, 20,0% de sepse, 0 ids duplicados, 0 violações de inclusão, 48 colunas com ausentes. `dias_ate_dx_sepse` detectada como vazamento (AUC 1,000, via indicador de ausência). Quase constantes (≥ 95%): `ecn` (96,4%) e `atb_prev_carbapenemicos` (96,2%). Maiores AUC isoladas: `pcr_pos24h` 0,899, `pct_pos24h` 0,862, `pcr_pre` 0,853, `news2` 0,825 |
 | 2. Dividir | **Concluído** (`dividir`, `separar_x_y`, gravação de `data/treino.csv` e `data/teste.csv` pelo CLI; 4 testes) | 800 treino (160 positivos) / 200 teste (40 positivos), ambos com 20,0%; `X` com 96 variáveis (97 menos `dias_ate_dx_sepse`). **Desvio do desenho:** `dividir` devolve os dois DataFrames completos (com `id_paciente` e alvo) para a divisão ser gravada e auditável; a separação em X e y ficou numa função à parte, `separar_x_y`. `scikit-learn 1.9.1` instalado e adicionado ao `requirements.txt` |
-| 3. Pré-processador | Pendente | |
+| 3. Pré-processador | **Concluído** (`tratar_ausentes_estruturais`, `aplicar_log1p`, `construir_preprocessador`; 10 testes novos, 38 no total) | Matriz do treino **800 × 132**, 0 ausentes, 11 indicadores de ausência (21 binárias + 67 numéricas/exames + 11 indicadores + 33 one-hot). Detalhes em 5.2 |
 | 4. Estratégias e interruptores | Pendente | |
 | 5. Fechamento | Pendente | |
+
+### 5.2 Passo 3: o que foi implementado
+
+`construir_preprocessador(X_treino, limiar_indicador=0.20)` devolve um `Pipeline` do scikit-learn **sem ajuste**
+(`set_output(transform="pandas")`, índice preservado para alinhar com `y`):
+
+```
+X ─► estrutural ─► log1p ─► ColumnTransformer ─────────────────────────────► float
+     hemocultura   28 colunas  bin  passthrough (21 binárias)
+                               num  mediana → padronizar (23 numéricas + 44 exames)
+                               ind  MissingIndicator (11 exames com ausência ≥ 20%)
+                               cat  "ausente" → one-hot (8 categóricas, 33 colunas)
+```
+
+- **Hemocultura** (`tratar_ausentes_estruturais`): resultado `negativa` → agente e sensibilidade `nao_se_aplica`;
+  resultado ausente → `nao_realizada`; positiva sem agente → `nao_informado`.
+- **`log1p`** (`aplicar_log1p`): levanta `ValueError` com valor ≤ −1 (ex.: código de ausente do sistema). Efeito no seed:
+  assimetria do `pcr_pre` de 8,1 para perto de 1; do `pct_pre` de 4,0 para 1,6.
+- **Só olha `X_treino` para decidir listas de colunas** (binárias; exames acima do limiar). Não usa o alvo e não aprende
+  valores. Dentro da validação cruzada essas listas vêm do treino inteiro, e não de cada dobra: efeito desprezível.
+- **CLI:** ajusta no treino e imprime `800 x 132 (11 indicadores de ausência), 0 ausentes`. Não transforma o teste.
+- **Etapa final de conversão para `float`** (acrescentada durante a implementação): os indicadores saíam como `bool` e as
+  binárias como `int64`; a matriz sai com um único tipo.
+- **Testes** (10 novos): sem NaN, nomes únicos e índice preservado; colunas proibidas fora da saída; medianas calculadas só
+  do treino e `transform` não altera o estado aprendido; hemocultura; indicadores só acima do limiar (e limiares 0 e 1);
+  padronização e binárias intactas; `log1p` reduz assimetria e rejeita valor inválido; categoria nova no teste vira zeros;
+  ausentes fora dos exames; pré-processador nasce sem ajuste e é clonável.
+
+Diferenças em relação ao desenho aprovado: o limite de indicador é **20%** (P4) e a lista de `log1p` tem **14 bases**
+(o rascunho dizia 13; contei errado, a lista inclui as três bilirrubinas e a relação neutrófilos/linfócitos).
 
 ## 6. Testes previstos (`tests/test_preprocessamento.py`)
 
@@ -174,3 +211,4 @@ construir_preprocessador ──► Pipeline([prep, SMOTE*, modelo]) ──► Gr
 | 2026-10-28 | Esclarecido com o usuário: "retirar" uma variável = não entregá-la ao modelo (o CSV não muda); a "zona cinzenta" (`dias_utin`, `*_dias`, `hemocultura_*`) fica por padrão e o interruptor `excluir_vazamento` é só análise de sensibilidade (pode esperar ou ser descartado). Recomendação para os dados reais: pedir na extração do SOUL MV que os dias de internação e de dispositivos sejam contados **até o momento da suspeita** |
 | 2026-10-28 | Passo 1 concluído. Correção: `qsofa`/`news2` não são "quase constantes" (qsofa só vale 2 ou 3; news2 tem AUC 0,83); textos corrigidos aqui e em `seed-plan.md` |
 | 2026-10-28 | Passo 2 concluído: divisão 80/20 estratificada, `scikit-learn` adicionado, 11 testes novos (28 no total) |
+| 2026-10-28 | Passo 3 concluído: `construir_preprocessador` (hemocultura, `log1p`, mediana, indicador de ausência ≥ 20%, escala, one-hot, saída em `float`); P4 alterado de 10% para 20%; P10 a P16 registrados; 10 testes novos (38 no total). README criado |
