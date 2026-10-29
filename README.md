@@ -45,12 +45,12 @@ seriados (`_pre` e `_pos24h`) e valores ausentes.
 | 4. Estratégias e interruptores | Era: outras formas de preencher ausentes (KNN e iterativo) e a análise com e sem a "zona cinzenta". **Reduzido (aprovado em 2026-10-29):** o iterativo e o experimento de recuperação foram descartados; o KNN fica adiado como possível botão do GridSearchCV; só `excluir_sinalizadas` segue, na etapa de modelos. Ver o [plano](plans/preprocessamento-passo4-plan.md), seção 0 | **Reduzido (aprovado)** |
 | 5. Fechamento | Atualizar a documentação e fechar a etapa | **Feito** (o pré-processador do passo 3 é a versão final) |
 
-### Etapas seguintes (ainda sem plano)
+### Etapas seguintes
 
 | Etapa | O que faz |
 |---|---|
 | 2. Desbalanceamento | Reamostragem (SMOTE) ou pesos de classe, aplicados só dentro de cada dobra da validação cruzada |
-| 3. Mineração de dados | Treinar os algoritmos do Quadro 4 (GB, XGBoost, DT, KNN, RF, NB, RL, MLP) com GridSearchCV |
+| 3. Mineração de dados | Treinar os algoritmos do Quadro 4 (GB, XGBoost, DT, KNN, RF, NB, RL, MLP) com GridSearchCV. **Passo 1 feito** (catálogo com grades enxuta e completa, e montagem dos pipelines; [plano](plans/modelos-passo1-plan.md)). **Passo 2 feito** (busca em grade e validação cruzada simples e aninhada, com as probabilidades fora da dobra; [plano](plans/modelos-passo2-plan.md)). Próximos: SMOTE e `excluir_sinalizadas` (passo 3), avaliação no teste e curvas ROC (passo 4) |
 | 4. Avaliação | Validação cruzada k = 5; F1-score (principal), acurácia, precisão, recall e AUROC; curvas ROC |
 | 5. Interpretação | Valores SHAP do melhor modelo |
 
@@ -68,6 +68,12 @@ seriados (`_pre` e `_pos24h`) e valores ausentes.
   coluna "foi medido?". Na hemocultura, o vazio de uma cultura negativa vira "não se aplica", e não "dado perdido".
 - **Exames de cauda longa** (PCR, PCT, lactato, leucócitos etc.) passam por `log1p` antes da padronização.
 - **Resultado no seed:** a matriz do treino fica com 800 linhas × 132 colunas, sem ausentes.
+- **A estrutura do pré-processador também é aprendida só do treino de cada rodada:** quais exames ganham o indicador
+  "foi medido?" e quais colunas são binárias são decididos no `fit`, e não olhando o treino inteiro (a revisão adversarial
+  mostrou que a dobra de validação influenciava isso).
+- **Desempenho estimado de duas formas:** busca simples (nota otimista do vencedor) e validação cruzada **aninhada** (nota
+  honesta). As probabilidades para as curvas ROC são as **fora da dobra** da aninhada; o teste só será aberto para o
+  modelo escolhido.
 
 ## Como usar
 
@@ -83,7 +89,15 @@ Requer Python 3.11 ou superior. Os comandos abaixo são para o Windows (PowerShe
 # 2. Auditar, dividir em treino e teste (-> data/treino.csv e data/teste.csv) e ajustar o pré-processador no treino
 .venv\Scripts\python.exe preprocessamento.py --entrada data/seed_sepse.csv --seed 42
 
-# Rodar os testes
+# 3. Listar o catálogo de modelos: nº de combinações das grades enxuta e completa e o ajuste de desbalanceamento
+.venv\Scripts\python.exe modelos.py --listar
+
+# 4. Busca em grade + validação cruzada dos 8 modelos (só o treino; cerca de 3 min na grade enxuta, 16 núcleos)
+#    -> data/resultados/comparacao_enxuta_class_weight.csv e oof_enxuta_class_weight.csv
+.venv\Scripts\python.exe validacao.py --grade enxuta --desbalanceamento class_weight
+#    opções: --modelos RL DT (subconjunto), --n-jobs N, --desbalanceamento nenhum, --grade completa
+
+# Rodar os testes (cerca de 3 min; os de validação rodam modelos de verdade)
 .venv\Scripts\python.exe -m pytest
 ```
 
@@ -95,6 +109,8 @@ taxas de dados ausentes) e `--seed` (mesma semente gera exatamente o mesmo CSV).
 ```
 gerador_seed.py            gerador de dados sintéticos
 preprocessamento.py        auditoria, divisão treino/teste e pré-processador (sklearn Pipeline, sem ajuste)
+modelos.py                 catálogo dos 8 algoritmos, grades de hiperparâmetros e montagem dos pipelines
+validacao.py               busca em grade e validação cruzada (simples e aninhada), só com o treino
 tests/                     testes automáticos (pytest)
 plans/                     planos versionados, um por passo
 docs/                      material de estudo (PDF e fonte LaTeX) com os conceitos do pipeline
