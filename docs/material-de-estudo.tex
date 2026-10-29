@@ -1,0 +1,1051 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[brazilian]{babel}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.16}
+\usepackage[most]{tcolorbox}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage[colorlinks=true,linkcolor=azul,urlcolor=azul,citecolor=azul]{hyperref}
+
+% ---------- cores ----------
+\definecolor{azul}{RGB}{31,78,121}
+\definecolor{azulclaro}{RGB}{232,240,250}
+\definecolor{verde}{RGB}{46,125,50}
+\definecolor{verdeclaro}{RGB}{232,245,233}
+\definecolor{laranja}{RGB}{191,87,0}
+\definecolor{laranjaclaro}{RGB}{255,243,230}
+\definecolor{cinzaclaro}{RGB}{242,242,242}
+
+% ---------- caixas ----------
+\newtcolorbox{conceito}[1][]{enhanced,breakable,colback=azulclaro,colframe=azul,
+  fonttitle=\bfseries,title={Conceito\if\relax\detokenize{#1}\relax\else: #1\fi},arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{atencao}[1][]{enhanced,breakable,colback=laranjaclaro,colframe=laranja,
+  fonttitle=\bfseries,title={Atenção\if\relax\detokenize{#1}\relax\else: #1\fi},arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{exemplo}[1][]{enhanced,breakable,colback=verdeclaro,colframe=verde,
+  fonttitle=\bfseries,title={Exemplo\if\relax\detokenize{#1}\relax\else: #1\fi},arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{teste}{enhanced,breakable,colback=cinzaclaro,colframe=black!60,
+  fonttitle=\bfseries,title={Teste-se},arc=2pt,left=6pt,right=6pt}
+
+% ---------- código ----------
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{cinzaclaro},
+  frame=single, rulecolor=\color{black!30},
+  breaklines=true, columns=fullflexible, keepspaces=true,
+  showstringspaces=false, language=Python,
+  keywordstyle=\color{azul}\bfseries, commentstyle=\color{verde}\itshape,
+  stringstyle=\color{laranja},
+  literate={á}{{\'a}}1 {à}{{\`a}}1 {â}{{\^a}}1 {ã}{{\~a}}1 {é}{{\'e}}1 {ê}{{\^e}}1
+           {í}{{\'i}}1 {ó}{{\'o}}1 {ô}{{\^o}}1 {õ}{{\~o}}1 {ú}{{\'u}}1 {ç}{{\c c}}1
+           {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1 {Ç}{{\c C}}1
+}
+
+% ---------- títulos e cabeçalho ----------
+\titleformat{\section}{\Large\bfseries\color{azul}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries\color{azul}}{\thesubsection}{0.6em}{}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Material de estudo: sepse neonatal tardia com aprendizado de máquina}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\setlist{itemsep=2pt,topsep=4pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+\newcommand{\cod}[1]{\texttt{#1}}
+
+\begin{document}
+
+% ======================= CAPA =======================
+\begin{titlepage}
+\centering
+\vspace*{3cm}
+{\Huge\bfseries\color{azul} Material de estudo\par}
+\vspace{0.6cm}
+{\Large Predição de sepse neonatal tardia\\com aprendizado de máquina\par}
+\vspace{1.2cm}
+{\large Conceitos por trás do pipeline do TCC\par}
+\vspace{3cm}
+\begin{minipage}{0.8\textwidth}
+\centering
+Este material reúne, em linguagem técnica mas não científica, os conceitos usados no pipeline:
+o que já foi feito, o que vem a seguir e por que cada etapa existe.
+Foi escrito para consulta e estudo ao longo de vários dias, não para leitura corrida.
+\end{minipage}
+\vfill
+{\large Versão de 29 de outubro de 2026}\par
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ======================= 0 =======================
+\section*{Como usar este material}
+\addcontentsline{toc}{section}{Como usar este material}
+
+\begin{itemize}
+  \item Cada capítulo termina com uma caixa \textbf{Teste-se}. As respostas estão no Apêndice~B.
+  \item As caixas \textbf{azuis} definem conceitos, as \textbf{laranjas} apontam armadilhas e as \textbf{verdes} trazem exemplos numéricos.
+  \item Os trechos de código são \emph{esboços ilustrativos} para entender a ideia. Não são o código do repositório.
+  \item O Apêndice~A é um glossário com os termos em português e em inglês, porque a documentação das bibliotecas está em inglês.
+  \item As métricas obtidas com os dados sintéticos \textbf{não têm valor científico}: o sinal foi plantado por nós. O que se valida agora é o \emph{encanamento} do pipeline.
+\end{itemize}
+
+\textbf{Ordem sugerida de leitura:} capítulos 1 e 2 (visão geral e vazamento) $\rightarrow$ 3 (o que já foi feito) $\rightarrow$ 4 a 7 (a parte de modelos) $\rightarrow$ 8 a 10 (algoritmos, interpretação e encaixe final).
+
+% ======================= 1 =======================
+\section{Visão geral: o problema e onde estamos}
+
+\subsection{O problema}
+
+Queremos prever, a partir de dados do prontuário eletrônico (SOUL MV), se um recém-nascido internado na UTI neonatal
+vai ter \textbf{sepse neonatal tardia} (CID-10 A41.9 / P36). A ideia do aprendizado de máquina é mostrar ao programa
+muitos exemplos (bebês com seus dados e a informação de quem teve ou não sepse) e deixá-lo descobrir sozinho o padrão
+que liga uns aos outros. Depois, o padrão aprendido é usado em bebês novos.
+
+Em termos técnicos, é um problema de \textbf{classificação binária supervisionada}:
+\begin{itemize}
+  \item \textbf{Supervisionada}: cada exemplo vem com o \emph{rótulo} (a resposta certa, aqui a coluna \cod{sepse\_tardia}).
+  \item \textbf{Binária}: o rótulo só assume dois valores, sepse ou não.
+  \item As colunas que descrevem o bebê são as \textbf{variáveis preditoras} (ou \emph{features}), e a coluna a prever é o \textbf{alvo} (\emph{target}).
+\end{itemize}
+
+\begin{conceito}[classificar $\times$ estimar uma probabilidade]
+``Binária'' descreve o \emph{rótulo} (sepse ou não), e é por isso que o problema é formalmente uma classificação binária. Mas isso
+\textbf{não} obriga o modelo a responder só ``sim/não''. O que o projeto quer entregar é uma \textbf{probabilidade de sepse tardia}
+(o risco do bebê, por exemplo 0,73). Na prática há duas camadas:
+\begin{enumerate}
+  \item O modelo \textbf{estima a probabilidade} (nos algoritmos do scikit-learn, o método \cod{predict\_proba}).
+  \item Opcionalmente, um \textbf{limiar} (capítulo~6) transforma essa probabilidade em sim/não.
+\end{enumerate}
+Os dois usos convivem, e as métricas do projeto (Quadro~5 do PDF) olham para camadas diferentes: a \textbf{AUROC} avalia a probabilidade
+(quão bem ela separa doentes de sadios); \textbf{F1, precisão, recall e acurácia} exigem a decisão sim/não, portanto dependem do limiar.
+\end{conceito}
+
+\begin{atencao}[calibração: a probabilidade é confiável?]
+Uma probabilidade é \textbf{calibrada} quando ``30\%'' significa que cerca de 30\% dos bebês com esse valor realmente têm sepse.
+AUROC e F1 \emph{não} medem isso: um modelo pode ordenar bem os bebês e ainda assim dar probabilidades infladas ou deflacionadas.
+O texto do projeto cita a calibração como condição indispensável para a utilidade clínica (revisão da literatura, com Wong et al., 2021),
+mas as métricas do Quadro~5 não incluem nenhuma de calibração. É um ponto a levar à orientadora (seção~\ref{sec:calibracao} e capítulo~10).
+Dois cuidados práticos: algoritmos como árvore, KNN e Naive Bayes costumam dar probabilidades mal calibradas, e tanto o
+\cod{class\_weight} quanto o SMOTE \textbf{deslocam as probabilidades para cima} (o modelo ``vê'' mais sepse do que existe).
+\end{atencao}
+
+\subsection{Os dados do projeto}
+
+Os dados reais dependem da aprovação do comitê de ética (CEP) e do conector com o prontuário. Enquanto isso, o pipeline
+é construído com \textbf{dados sintéticos} (o \emph{seed}), gerados por \cod{gerador\_seed.py}:
+
+\begin{itemize}
+  \item 1 linha por recém-nascido (tabela plana); no teste padrão, 1000 bebês.
+  \item 99 colunas: 97 preditoras, mais \cod{id\_paciente} e \cod{sepse\_tardia}.
+  \item Prevalência configurável (padrão 20\% de sepse), sinal clínico plausível, exames seriados (\cod{\_pre} e \cod{\_pos24h}) e valores ausentes.
+\end{itemize}
+
+\begin{atencao}[o seed não é a realidade]
+Os pesos e efeitos do gerador são palpites clínicos. Os modelos vão ``descobrir'' o que nós mesmos plantamos.
+Com dados reais os efeitos serão mais complexos e o desempenho tende a ser pior.
+\end{atencao}
+
+\subsection{O processo KDD}
+
+O projeto segue o \textbf{KDD} (\emph{Knowledge Discovery in Databases}, Descoberta de Conhecimento em Bases de Dados),
+uma sequência de etapas. Vale reconhecer, em cada passo do código, em qual etapa você está.
+
+\begin{center}
+\begin{tabular}{@{}llp{5.6cm}@{}}
+\toprule
+\textbf{Etapa do KDD} & \textbf{Status} & \textbf{O que acontece} \\
+\midrule
+1. Seleção & Feita & Escolha das variáveis (Quadros 2 e 3 do projeto) e geração do seed \\
+2. Pré-processamento & Feito (passos 1--3) & Auditoria, divisão treino/teste, preenchimento de ausentes \\
+3. Transformação & Feita (passo 3) & Escala, one-hot, \cod{log1p} \\
+4. Mineração de dados & \textbf{Próxima} & Treinar os 8 algoritmos do Quadro 4 \\
+5. Avaliação e interpretação & Depois & Métricas, curvas ROC, SHAP \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{teste}
+\begin{enumerate}
+  \item O que significa dizer que o problema é de classificação binária supervisionada?
+  \item Qual a diferença entre variável preditora e alvo?
+  \item Por que as métricas do seed não servem como resultado científico?
+\end{enumerate}
+\end{teste}
+
+% ======================= 2 =======================
+\section{O princípio central: separar treino e teste e evitar vazamento}
+
+\subsection{Treino e teste}
+
+Um modelo que acerta os exemplos que já viu não prova nada: ele pode apenas ter decorado. O que importa é
+quão bem ele acerta bebês \emph{que nunca viu}. Por isso os pacientes são divididos em dois grupos:
+
+\begin{itemize}
+  \item \textbf{Treino (80\%)}: onde o modelo aprende e onde todas as escolhas de desenvolvimento são feitas.
+  \item \textbf{Teste (20\%)}: uma prova final, \textbf{lacrada}. Só é aberta no fim, uma vez, para a nota honesta.
+\end{itemize}
+
+A divisão é feita \textbf{por paciente} (cada paciente cai em um só lado) e \textbf{estratificada} (os dois lados mantêm a
+mesma proporção de sepse), com uma semente fixa (\cod{seed=42}) para ser reproduzível. No seed de 1000 bebês, ficam 800 no treino e 200 no teste.
+
+\subsection{Vazamento de dados (\emph{data leakage})}
+
+\begin{conceito}[vazamento de dados]
+É qualquer situação em que \textbf{informação que o modelo não teria no uso real} chega ao treino. O resultado é uma nota
+inflada, que desaba quando o modelo encontra dados novos. Há dois sabores importantes neste projeto:
+
+\textbf{(a) Vazamento do teste para o treino.} Exemplo: calcular a mediana ou a escala usando todos os dados antes de dividir. Os números
+passam a carregar informação do teste. \emph{Regra}: tudo o que é ``aprendido'' (medianas, escalas, pesos do modelo) vem \textbf{só do treino}.
+
+\textbf{(b) Vazamento do alvo.} Uma variável que só existe, ou só é preenchida, \emph{por causa} do desfecho. Ela entrega a resposta
+sem ter poder preditivo real.
+\end{conceito}
+
+Dois casos concretos já tratados neste projeto:
+
+\begin{itemize}
+  \item \cod{dias\_ate\_dx\_sepse}: só existe para quem \emph{teve} sepse (os dias até o diagnóstico). Quem não teve fica vazio. Logo ela prevê o alvo por construção, e foi \textbf{retirada} das variáveis de entrada.
+  \item A \textbf{``zona cinzenta''}: \cod{dias\_utin}, \cod{vm\_dias}, \cod{cvc\_dias}, \cod{npt\_dias} e \cod{hemocultura\_*}. Um bebê com sepse tende a ficar mais dias internado, ventilado, com cateter etc., então essas variáveis podem ser \emph{consequência} da sepse e não causa. Elas \textbf{ficam} como preditoras por enquanto, mas há um interruptor planejado para treinar sem elas (análise de sensibilidade). A recomendação para os dados reais é contar esses dias \textbf{até o momento da suspeita}, e não até a última evolução do prontuário.
+\end{itemize}
+
+\begin{atencao}[o vazamento mais traiçoeiro]
+O vazamento raramente dá erro: o código roda e as métricas aparecem lindas. Por isso a disciplina é de projeto (Pipeline, dobras, teste lacrado) e não de ``conferir se ficou certo''. Se uma métrica parece boa demais, desconfie primeiro do vazamento.
+\end{atencao}
+
+\begin{teste}
+\begin{enumerate}
+  \item Por que não podemos usar o conjunto de teste para escolher entre dois modelos?
+  \item Por que \cod{dias\_ate\_dx\_sepse} foi removida, mas \cod{dias\_utin} ficou?
+  \item Calcular a mediana de uma coluna usando todo o dataset e depois dividir treino/teste é vazamento? Por quê?
+\end{enumerate}
+\end{teste}
+
+% ======================= 3 =======================
+\section{O que já foi feito: pré-processamento e transformação}
+
+Os algoritmos esperam uma tabela numérica, completa e em escalas comparáveis. Os dados do prontuário não vêm assim.
+O módulo \cod{preprocessamento.py} faz a ponte, em três passos concluídos.
+
+\subsection{Passo 1: carregar e auditar}
+
+Um ``check-up'' antes de qualquer coisa: quantas linhas, quantos ausentes por coluna, colunas quase constantes (95\% ou mais
+com o mesmo valor, que não ajudam em nada) e colunas que sozinhas separam as classes quase perfeitamente
+(AUC acima de 0,95, forte suspeita de vazamento).
+
+\subsection{Passo 2: dividir}
+
+Separa 80\% / 20\%, como descrito no capítulo~2, e grava \cod{data/treino.csv} e \cod{data/teste.csv}.
+
+\subsection{Passo 3: o pré-processador}
+
+O pré-processador é construído a partir do treino e aplica transformações diferentes conforme o tipo de coluna.
+Conceitos usados:
+
+\begin{conceito}[imputação pela mediana]
+\textbf{Imputar} é preencher valores ausentes. A \textbf{mediana} é o valor do meio quando se ordenam os números; ao contrário da
+média, não é puxada por valores extremos (um PCR de 300 não distorce o ``valor típico''). A mediana usada é a \textbf{do treino},
+inclusive para preencher os ausentes do teste.
+\end{conceito}
+
+\begin{conceito}[padronização (\emph{standard scaling})]
+Transforma cada coluna para ter média 0 e desvio-padrão 1:
+\[
+z = \frac{x - \mu}{\sigma},
+\]
+com $\mu$ e $\sigma$ calculados \textbf{no treino}. Sem isso, uma coluna medida em milhares (plaquetas) dominaria outra medida em unidades
+(sexo 0/1) em qualquer algoritmo baseado em distância (KNN) ou em gradientes (regressão logística, MLP).
+\end{conceito}
+
+\begin{conceito}[one-hot encoding]
+Uma coluna de texto com categorias (por exemplo, três tipos de parto) é trocada por uma coluna 0/1 para cada categoria. O modelo não
+entende texto, e numerar as categorias (1, 2, 3) criaria uma ordem que não existe.
+\end{conceito}
+
+\begin{conceito}[\texttt{log1p}]
+Exames como PCR, procalcitonina, lactato e leucócitos têm \textbf{cauda longa}: muitos valores baixos e poucos muito altos.
+A transformação $\log(1+x)$ comprime os extremos, deixando a distribuição mais simétrica. O ``$+1$'' permite aplicar o log a zeros.
+É feita antes da padronização.
+\end{conceito}
+
+\begin{conceito}[indicador de ausência]
+Em dado clínico, \emph{estar ausente} costuma carregar informação: um exame que ninguém pediu pode significar que o bebê
+parecia bem. Por isso, para exames com 20\% ou mais de ausentes, o pré-processador cria uma coluna extra ``foi medido?'' (0/1), além de
+preencher o valor pela mediana. Isso preserva o sinal de que ``faltou''.
+\end{conceito}
+
+\textbf{Caso especial, a hemocultura.} O resultado vazio de uma cultura negativa não é ``dado perdido'': é ``não se aplica''. Esse vazio vira
+uma categoria própria, e não passa pela imputação.
+
+\subsubsection{Tipos de dados ausentes}
+
+\begin{itemize}
+  \item \textbf{MCAR} (\emph{missing completely at random}): a ausência é puro acaso. É o caso do seed.
+  \item \textbf{MNAR} (\emph{missing not at random}): a ausência depende do próprio valor ou do estado do paciente. É o provável no dado real, e é por isso que existe o indicador de ausência.
+\end{itemize}
+
+\subsection{O Pipeline do scikit-learn}
+
+\begin{conceito}[Pipeline e ColumnTransformer]
+Um \textbf{Pipeline} encadeia passos (imputar $\rightarrow$ escalar $\rightarrow$ modelo) em um único objeto, com as operações
+\cod{fit} (aprender com os dados) e \cod{transform}/\cod{predict} (aplicar). Um \textbf{ColumnTransformer} aplica tratamentos diferentes a
+grupos de colunas (numéricas, binárias, categóricas) e junta o resultado.
+
+A grande vantagem: o pipeline pode ser \emph{refeito do zero} sobre qualquer subconjunto de dados. É por isso que ele é a base da validação
+cruzada sem vazamento (capítulo~4).
+\end{conceito}
+
+O resultado no seed: a matriz do treino passa a ter \textbf{800 linhas $\times$ 132 colunas, sem nenhum valor ausente}
+(as colunas preditoras originais viram 132 por causa do one-hot e dos indicadores de ausência).
+
+\subsection{O que está planejado mas foi adiado}
+
+O \emph{passo 4} do pré-processamento oferece alternativas de imputação e um interruptor:
+\begin{itemize}
+  \item \textbf{Imputação por KNN}: preenche o ausente com a média dos $k$ pacientes mais parecidos (no treino).
+  \item \textbf{Imputação iterativa}: faz regressões de cada coluna com ausentes sobre as demais, repetidamente. Mais lenta (cerca de 17 s por ajuste no seed, contra 0,3 s do KNN), o que a torna cara dentro de uma busca em grade.
+  \item \textbf{\cod{excluir\_sinalizadas}}: treinar sem a zona cinzenta.
+\end{itemize}
+Decidiu-se priorizar os modelos e voltar a isso depois. A estratégia de imputação poderá virar mais um hiperparâmetro da busca.
+
+\begin{teste}
+\begin{enumerate}
+  \item Por que a mediana usada para preencher ausentes do teste deve vir do treino?
+  \item Qual a vantagem da mediana sobre a média para preencher ausentes de um exame de cauda longa?
+  \item Para que serve o indicador de ausência e em que tipo de ausência ele ajuda?
+  \item Por que padronizar é essencial para o KNN, mas pouco importante para uma árvore de decisão?
+\end{enumerate}
+\end{teste}
+
+% ======================= 4 =======================
+\newpage
+\section{Validação: dobras, Pipeline, hiperparâmetros e GridSearch}
+
+\subsection{O problema que a validação resolve}
+
+Durante o desenvolvimento precisamos \textbf{comparar modelos e escolher configurações}, e não podemos usar o teste para isso
+(seria colar na prova final). Precisamos de uma ``prova intermediária'' feita só com o treino.
+
+\subsection{Dobras e validação cruzada}
+
+\begin{conceito}[validação cruzada de $k$ dobras]
+Corta-se o conjunto de treino em $k$ pedaços iguais, as \textbf{dobras} (\emph{folds}). Em cada rodada, um pedaço serve de
+mini-prova (\emph{validação}) e os outros $k-1$ servem de estudo. A nota final do modelo é a \textbf{média das $k$ rodadas}.
+O projeto usa $k=5$.
+\end{conceito}
+
+\begin{center}
+\begin{tikzpicture}[x=1.7cm,y=0.75cm]
+  \foreach \lin in {1,...,5}{
+    \node[anchor=east,font=\small] at (0.35,-\lin) {Rodada \lin};
+    \foreach \col in {1,...,5}{
+      \ifnum\lin=\col
+        \node[draw,fill=laranja!70,minimum width=1.6cm,minimum height=0.6cm,font=\scriptsize] at (\col,-\lin) {validação};
+      \else
+        \node[draw,fill=azul!25,minimum width=1.6cm,minimum height=0.6cm,font=\scriptsize] at (\col,-\lin) {treino};
+      \fi
+    }
+  }
+\end{tikzpicture}
+\end{center}
+
+\textbf{Por que isso ajuda:}
+\begin{itemize}
+  \item Compara modelos \emph{sem tocar no teste}.
+  \item Reduz o acaso. Com cerca de 100 a 175 casos de sepse, uma única divisão pode dar sorte ou azar. Cinco divisões dão uma nota mais estável.
+\end{itemize}
+
+\textbf{Estratificada} (\cod{StratifiedKFold}) significa que cada dobra mantém a proporção de sepse do conjunto todo. Sem isso, uma dobra poderia ficar com poucos casos positivos, e a métrica daquela rodada ficaria instável.
+
+\subsection{Por que o Pipeline precisa ficar \emph{dentro} da validação cruzada}
+
+Em cada rodada, o pipeline inteiro (mediana, escala, reamostragem, modelo) é \textbf{refeito do zero usando só as 4 dobras de estudo}.
+A dobra de validação nunca influencia a mediana, a escala ou o SMOTE daquela rodada. Se o pré-processamento fosse feito
+\emph{antes} de cortar as dobras, a dobra de validação já teria contribuído para os números aprendidos, o que é
+vazamento (tipo a, do capítulo~2).
+
+\subsection{Parâmetros, hiperparâmetros e sobreajuste}
+
+\begin{conceito}[parâmetro $\times$ hiperparâmetro]
+\textbf{Parâmetros} são o que o modelo aprende sozinho dos dados (os pesos de uma regressão, as perguntas de uma árvore).
+\textbf{Hiperparâmetros} são os botões que \emph{você} regula antes de treinar (número de vizinhos do KNN, profundidade máxima da árvore, taxa
+de aprendizado). Ninguém sabe de antemão o melhor valor.
+\end{conceito}
+
+\begin{conceito}[sobreajuste e subajuste]
+\textbf{Sobreajuste} (\emph{overfitting}): o modelo decora o treino, incluindo o ruído, e vai mal em dados novos. \textbf{Subajuste} (\emph{underfitting}): o modelo é simples demais e não capta nem o padrão real.
+Quase todo hiperparâmetro regula um ponto desse equilíbrio. Exemplo: uma árvore sem limite de profundidade decora o treino (sobreajuste);
+uma árvore com 1 pergunta só é simples demais (subajuste).
+\end{conceito}
+
+\begin{atencao}[risco específico do projeto]
+Com cerca de 700 pacientes, 15 a 25\% de sepse (aproximadamente 105 a 175 casos) e 97 variáveis, o risco de sobreajuste é alto. O projeto não prevê seleção de variáveis; esse é um ponto a discutir com a orientadora.
+\end{atencao}
+
+\subsection{GridSearchCV}
+
+\begin{conceito}[busca em grade]
+O \textbf{GridSearchCV} automatiza a escolha de hiperparâmetros:
+\begin{enumerate}
+  \item Você define uma \textbf{grade}: uma lista de valores para cada hiperparâmetro.
+  \item Para \textbf{cada combinação}, ele executa a validação cruzada de 5 dobras e calcula a nota (aqui, o F1).
+  \item Escolhe a combinação com a melhor média.
+  \item \textbf{Retreina} essa combinação com todo o treino.
+\end{enumerate}
+\end{conceito}
+
+\begin{exemplo}[contas de custo]
+Grade do KNN: $k \in \{3,5,11,21\}$ e \cod{weights} $\in \{\text{uniform},\text{distance}\}$: $4\times 2 = 8$ combinações.
+Com 5 dobras, são $8\times 5 = \mathbf{40}$ treinos, mais 1 retreino final.
+Se a grade tivesse 4 hiperparâmetros com 5 valores cada, seriam $5^4 = 625$ combinações $\times$ 5 dobras $= 3125$ treinos.
+O custo cresce multiplicativamente, e por isso se fala em grade \emph{enxuta} (testar o pipeline) e \emph{completa} (dado real).
+\end{exemplo}
+
+\begin{lstlisting}
+# Esboço ilustrativo (não é o código do repositório)
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.pipeline import Pipeline
+
+pipe = Pipeline([
+    ("prep", preprocessador),          # imputar, escalar, one-hot
+    ("modelo", KNeighborsClassifier()),
+])
+grade = {
+    "modelo__n_neighbors": [3, 5, 11, 21],
+    "modelo__weights": ["uniform", "distance"],
+}
+busca = GridSearchCV(
+    pipe, grade,
+    cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=42),
+    scoring="f1",
+)
+busca.fit(X_treino, y_treino)           # 8 combinações x 5 dobras
+print(busca.best_params_, busca.best_score_)
+\end{lstlisting}
+
+O prefixo \cod{modelo\_\_} (dois sublinhados) é a convenção do scikit-learn para ``o hiperparâmetro \cod{n\_neighbors} do passo chamado \cod{modelo}''.
+
+\begin{atencao}[a nota do vencedor é otimista]
+Como o vencedor foi escolhido \emph{por ser o melhor naquelas dobras}, sua nota média de validação é um pouco otimista. A nota honesta vem do conjunto de teste lacrado.
+A versão mais rigorosa para estimar o desempenho de todo o procedimento é a \textbf{validação cruzada aninhada} (uma validação cruzada externa que contém o GridSearch interno); é mais cara e fica como opção.
+\end{atencao}
+
+\begin{teste}
+\begin{enumerate}
+  \item Por que a nota de validação cruzada é mais confiável que uma única divisão treino/validação?
+  \item Qual a diferença entre parâmetro e hiperparâmetro? Dê um exemplo de cada.
+  \item Uma grade com 3 hiperparâmetros de 4 valores cada, com 5 dobras, faz quantos treinos?
+  \item Por que o pré-processamento tem que ficar dentro do Pipeline na validação cruzada?
+\end{enumerate}
+\end{teste}
+
+% ======================= 5 =======================
+\section{Desbalanceamento de classes}
+
+\subsection{O problema}
+
+Só cerca de 20\% dos bebês têm sepse. Um modelo preguiçoso que responde ``ninguém tem sepse'' acerta 80\% (acurácia de 80\%) e
+\textbf{não serve para nada}: não acha nenhum caso. Por padrão, os algoritmos minimizam o erro total, e isso os leva a ignorar a classe pequena.
+Há duas famílias de solução.
+
+\subsection{\texttt{class\_weight}: dar mais peso à classe rara}
+
+\begin{conceito}[pesos de classe]
+Não altera os dados. Informa ao modelo que errar um caso de sepse custa mais do que errar um caso sem sepse. No modo \cod{balanced}
+do scikit-learn, o peso de cada classe é
+\[
+w_c = \frac{n_{\text{amostras}}}{n_{\text{classes}}\cdot n_c}.
+\]
+Com 20\% de sepse: $w_{\text{sepse}} = 1/(2\cdot 0{,}2) = 2{,}5$ e $w_{\text{sem sepse}} = 1/(2\cdot 0{,}8)=0{,}625$. Ou seja, um erro em sepse conta \textbf{4 vezes} mais.
+\end{conceito}
+
+Vantagens: simples, rápido, sem efeitos colaterais nos dados. Limitação: \textbf{nem todo algoritmo aceita} \cod{class\_weight}. No scikit-learn, \cod{KNeighborsClassifier} e \cod{MLPClassifier} não aceitam, e o \cod{GradientBoostingClassifier} só aceita pesos por amostra (\cod{sample\_weight}) no \cod{fit}. O XGBoost tem o equivalente \cod{scale\_pos\_weight} ($\approx$ negativos/positivos $=4$).
+Para esses casos, a alternativa é reamostrar.
+
+\subsection{SMOTE: fabricar casos sintéticos}
+
+\begin{conceito}[SMOTE]
+\emph{Synthetic Minority Over-sampling Technique}. Para cada novo caso sintético:
+\begin{enumerate}
+  \item Sorteia um paciente \textbf{com sepse} do treino.
+  \item Acha seus $k$ vizinhos mais próximos \textbf{também com sepse} (padrão $k=5$).
+  \item Sorteia um deles e cria um ponto \textbf{no meio do caminho}:
+  $x_{\text{novo}} = x + \lambda\,(x_{\text{vizinho}} - x)$, com $\lambda$ sorteado entre 0 e 1.
+\end{enumerate}
+Repete até a classe rara ficar com o tamanho desejado (por padrão, igualando as classes).
+\end{conceito}
+
+\begin{center}
+\begin{tikzpicture}[scale=1.0]
+  \draw[->] (0,0) -- (6,0) node[right] {\small variável 1};
+  \draw[->] (0,0) -- (0,4) node[above] {\small variável 2};
+  \foreach \x/\y in {1/1,1.4/2.8,2.2/1.6,4.8/3.3,5.2/2.2}{
+    \fill[azul!60] (\x,\y) circle (2pt);
+  }
+  \fill[laranja] (2.8,3.2) circle (2.5pt) node[above] {\small sepse A};
+  \fill[laranja] (4.2,1.2) circle (2.5pt) node[below] {\small sepse B};
+  \draw[dashed,laranja] (2.8,3.2) -- (4.2,1.2);
+  \fill[verde] (3.5,2.2) circle (2.5pt) node[right] {\small sintético};
+  \node[font=\scriptsize,azul] at (1.6,0.4) {sem sepse};
+\end{tikzpicture}
+\end{center}
+
+\textbf{Limitações do SMOTE:}
+\begin{itemize}
+  \item \textbf{Só pode ser aplicado dentro do treino de cada rodada.} Se criasse sintéticos antes de dividir em dobras, cópias quase idênticas de um mesmo bebê cairiam no treino e na validação, e o modelo ``reconheceria'' o que já viu. É vazamento puro. Por isso ele fica \emph{dentro} do Pipeline (na biblioteca \cod{imbalanced-learn}, que tem um Pipeline próprio que só reamostra durante o \cod{fit}).
+  \item Misturar variáveis contínuas com 0/1 e one-hot gera pontos sem sentido (por exemplo, ``sexo = 0,3''). Existe a variante SMOTE-NC para variáveis categóricas.
+  \item Com cerca de 130 colunas e poucos casos, a noção de ``vizinho'' fica borrada.
+  \item O teste e a validação \textbf{nunca} são reamostrados: a avaliação tem que refletir a prevalência real (20\%).
+\end{itemize}
+
+\begin{atencao}
+Não há resposta única sobre qual abordagem é melhor, \cod{class\_weight} ou SMOTE. O projeto prevê o SMOTE, e a ideia é comparar os dois com a mesma validação.
+\end{atencao}
+
+\begin{teste}
+\begin{enumerate}
+  \item Por que uma acurácia de 80\% pode ser inútil num problema com 20\% de positivos?
+  \item O que o \cod{class\_weight='balanced'} faz com os dados? E o SMOTE?
+  \item Por que aplicar o SMOTE antes de dividir em dobras infla as métricas?
+  \item Cite um algoritmo do projeto que não aceita \cod{class\_weight} no scikit-learn.
+\end{enumerate}
+\end{teste}
+
+% ======================= 6 =======================
+\section{Métricas de avaliação}
+
+\subsection{A matriz de confusão}
+
+Para cada bebê, o modelo erra ou acerta de um de quatro jeitos:
+
+\begin{center}
+\begin{tabular}{@{}l|c|c@{}}
+ & \textbf{Previu sepse} & \textbf{Previu sem sepse} \\ \hline
+\textbf{Teve sepse} & Verdadeiro positivo (VP) & \textbf{Falso negativo (FN)}: caso que escapou \\ \hline
+\textbf{Não teve} & Falso positivo (FP): alarme falso & Verdadeiro negativo (VN) \\
+\end{tabular}
+\end{center}
+
+\subsection{As métricas}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.5}
+\begin{tabular}{@{}llp{6cm}@{}}
+\toprule
+\textbf{Métrica} & \textbf{Fórmula} & \textbf{Pergunta que responde} \\
+\midrule
+Acurácia & $\dfrac{VP+VN}{VP+VN+FP+FN}$ & Qual a fração de acertos? (enganosa com classes desbalanceadas) \\
+Precisão & $\dfrac{VP}{VP+FP}$ & Dos que o modelo marcou como sepse, quantos tinham mesmo? Posso confiar no alarme? \\
+Recall (sensibilidade) & $\dfrac{VP}{VP+FN}$ & Dos que tinham sepse, quantos o modelo achou? Quantos escaparam? \\
+F1 & $\dfrac{2\cdot\text{precisão}\cdot\text{recall}}{\text{precisão}+\text{recall}}$ & Média harmônica: só é alta se \emph{ambas} forem altas \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+O \textbf{F1} é a métrica principal do projeto. A média \emph{harmônica} é mais severa que a média comum: precisão 1,0 com recall 0,1 dá média comum de 0,55, mas F1 de apenas 0,18.
+
+Em sepse neonatal o \textbf{falso negativo} costuma ser o erro mais grave (um bebê com sepse sem alarme), então o recall pesa clinicamente. Mas um recall alto à custa de muitos alarmes falsos sobrecarrega a equipe. O F1 equilibra os dois.
+
+\begin{exemplo}[contas com 200 bebês de teste, 40 com sepse]
+\textbf{Modelo A} (acha 28 dos 40 casos; dá 20 alarmes falsos): VP = 28, FN = 12, FP = 20, VN = 140.
+\begin{itemize}
+  \item Acurácia $= (28+140)/200 = 0{,}84$
+  \item Precisão $= 28/(28+20) \approx 0{,}58$
+  \item Recall $= 28/40 = 0{,}70$
+  \item F1 $= 2\cdot 0{,}58\cdot 0{,}70/(0{,}58+0{,}70) \approx 0{,}64$
+\end{itemize}
+\textbf{Modelo preguiçoso} (``ninguém tem sepse''): VP = 0, FN = 40, FP = 0, VN = 160.
+Acurácia $= 160/200 = 0{,}80$ (parece decente!), mas recall $= 0$ e F1 $= 0$.
+\end{exemplo}
+
+\subsection{Limiar, curva ROC e AUROC}
+
+A maioria dos modelos não responde ``sim/não'': responde uma \textbf{probabilidade} (``73\% de chance de sepse''). Para virar
+sim/não, escolhe-se um \textbf{limiar} (por exemplo, acima de 50\% é sepse):
+\begin{itemize}
+  \item \textbf{Limiar baixo}: pega mais casos (recall sobe), mas dispara mais alarmes falsos.
+  \item \textbf{Limiar alto}: poucos alarmes falsos, mas deixa casos escaparem.
+\end{itemize}
+
+\begin{conceito}[curva ROC]
+\emph{Receiver Operating Characteristic}. Para \textbf{todos os limiares de uma vez}, plota a taxa de acerto nos doentes
+(\textbf{taxa de verdadeiros positivos}, igual ao recall, eixo Y) contra a taxa de alarme falso entre os sadios
+(\textbf{taxa de falsos positivos} $= FP/(FP+VN)$, eixo X). Cada ponto da curva é um limiar.
+A diagonal é o chute aleatório; quanto mais colada no canto superior esquerdo, melhor.
+\end{conceito}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+  width=8.5cm,height=8.5cm,
+  xlabel={Taxa de falsos positivos (1 $-$ especificidade)},
+  ylabel={Taxa de verdadeiros positivos (recall)},
+  xmin=0,xmax=1,ymin=0,ymax=1,
+  grid=both, grid style={black!10},
+  legend pos=south east, legend style={font=\small},
+  label style={font=\small}, tick label style={font=\small}
+]
+\addplot[thick,azul,smooth] coordinates {(0,0)(0.03,0.30)(0.08,0.52)(0.15,0.68)(0.25,0.80)(0.40,0.90)(0.60,0.96)(1,1)};
+\addlegendentry{Modelo (curva ilustrativa)}
+\addplot[dashed,black!60] coordinates {(0,0)(1,1)};
+\addlegendentry{Chute aleatório (AUROC = 0,5)}
+\end{axis}
+\end{tikzpicture}
+
+{\small\emph{Curva ilustrativa, não vem dos dados do projeto.}}
+\end{center}
+
+\begin{conceito}[AUROC]
+A área sob a curva ROC, de 0,5 (chute) a 1,0 (perfeito). Interpretação intuitiva: \textbf{é a probabilidade de, sorteando um bebê com sepse e um sem,
+o modelo dar nota mais alta ao doente}. Não depende de um limiar fixo.
+\end{conceito}
+
+\begin{atencao}[F1 e AUROC medem coisas diferentes]
+A \textbf{AUROC} avalia a capacidade de \emph{ranquear} (separar doentes de sadios) em qualquer limiar. O \textbf{F1} avalia o desempenho
+\emph{com um limiar específico} (em geral 0,5). Um modelo pode ter AUROC boa e F1 ruim simplesmente porque o limiar padrão não é adequado para uma
+classe rara. Ajustar o limiar (por exemplo, escolhendo o que maximiza o F1 dentro da validação cruzada) é uma decisão a considerar mais adiante.
+Com classes muito desbalanceadas, a curva \emph{precisão $\times$ recall} também é informativa.
+\end{atencao}
+
+\subsection{Calibração: a probabilidade é confiável?}
+\label{sec:calibracao}
+
+\subsubsection*{Três números que se confundem}
+
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lp{3.4cm}p{7.4cm}@{}}
+\toprule
+\textbf{Número} & \textbf{Exemplo} & \textbf{O que é} \\
+\midrule
+Prevalência & 20\% & Proporção de bebês com sepse na \emph{população}. É o ponto de partida: o que se chutaria sem saber nada sobre o bebê. \\
+Probabilidade individual & ``bebê X: 0,73'' & Saída do modelo \emph{para um bebê específico}, usando os dados dele. O modelo parte da prevalência e ajusta para cima ou para baixo. \\
+Frequência observada & 73\% & Fração que \emph{realmente} teve sepse entre os bebês que receberam probabilidades parecidas. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{conceito}[calibração]
+Um modelo é \textbf{calibrado} quando a probabilidade que ele dá coincide com a frequência real: entre os bebês a quem ele atribui cerca de 0,73, cerca de 73\% têm sepse.
+A probabilidade é \textbf{individual} (sobre o bebê X), mas só pode ser \textbf{verificada em grupo}: para um único bebê o desfecho é 0 ou 1 (teve ou não teve sepse), nunca ``73\%'', então não há como dizer se o 0,73 estava ``certo''.
+\end{conceito}
+
+\subsubsection*{Discriminação e calibração são independentes}
+
+\begin{itemize}
+  \item \textbf{Discrimina bem, mas é mal calibrado:} o modelo dá 0,90 a todos os bebês com sepse e 0,80 a todos os sem sepse. A ordem é perfeita (AUROC = 1,0), mas ele diz ``80\% de risco'' para bebês que nunca tiveram sepse.
+  \item \textbf{Calibrado, mas inútil:} o modelo dá 0,20 a todo mundo. O número bate com a prevalência, mas não separa ninguém (AUROC = 0,5).
+\end{itemize}
+
+AUROC mede a discriminação. O F1 só olha a decisão sim/não depois do corte. Nenhum dos dois mede a calibração.
+
+\subsubsection*{Como se mede}
+
+\textbf{Curva de calibração} (diagrama de confiabilidade):
+\begin{enumerate}
+  \item Agrupe os bebês do teste por \textbf{faixa de probabilidade prevista} (0 a 10\%, 10 a 20\% etc.).
+  \item Em cada faixa, calcule a \textbf{média prevista} e a \textbf{fração que teve sepse}.
+  \item Plote uma contra a outra. A diagonal é a calibração perfeita. Pontos \emph{abaixo} dela indicam que o modelo \textbf{superestima} o risco; pontos \emph{acima}, que \textbf{subestima}.
+\end{enumerate}
+
+\begin{exemplo}[um modelo bem calibrado nas faixas baixas e exagerado nas altas]
+\begin{center}
+\small
+\begin{tabular}{@{}cccl@{}}
+\toprule
+\textbf{Faixa prevista} & \textbf{Média prevista} & \textbf{Fração com sepse} & \textbf{Leitura} \\
+\midrule
+0 a 10\% & 5\% & 5\% & calibrado \\
+30 a 40\% & 35\% & 30\% & quase \\
+70 a 80\% & 75\% & 45\% & \textbf{superestima} \\
+90 a 100\% & 95\% & 70\% & \textbf{superestima} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{exemplo}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+  width=8cm,height=8cm,
+  xlabel={Probabilidade média prevista},
+  ylabel={Fração observada com sepse},
+  xmin=0,xmax=1,ymin=0,ymax=1,
+  grid=both, grid style={black!10},
+  legend pos=north west, legend style={font=\small},
+  label style={font=\small}, tick label style={font=\small}
+]
+\addplot[dashed,black!60] coordinates {(0,0)(1,1)};
+\addlegendentry{Calibração perfeita}
+\addplot[thick,azul,mark=*] coordinates {(0.05,0.05)(0.35,0.30)(0.75,0.45)(0.95,0.70)};
+\addlegendentry{Modelo do exemplo}
+\end{axis}
+\end{tikzpicture}
+
+{\small\emph{Curva do exemplo acima: os pontos abaixo da diagonal, à direita, mostram a superestimação.}}
+\end{center}
+
+Cada ponto compara, por faixa, o que o modelo previu com o que aconteceu. Não se trata de acertar bebê a bebê, e sim de a \emph{média prevista} da faixa bater com a \emph{frequência real}.
+
+\textbf{Escore de Brier:} a média de $(p-y)^2$, com $p$ a probabilidade prevista e $y$ igual a 0 ou 1. Menor é melhor.
+\begin{itemize}
+  \item Previu 0,9 e teve sepse: $(0{,}9-1)^2 = 0{,}01$ (erro pequeno). Previu 0,9 e não teve: $(0{,}9-0)^2 = 0{,}81$ (erro grande).
+  \item \textbf{Referência ingênua:} quem prevê sempre a prevalência (0,20) tem Brier $=0{,}2\cdot0{,}64+0{,}8\cdot0{,}04 = 0{,}16$, ou seja, $\text{prevalência}\times(1-\text{prevalência})$. Um modelo útil deve ficar \textbf{abaixo de 0,16}.
+  \item O Brier mistura discriminação e calibração em um só número; por isso é usado junto com a curva.
+\end{itemize}
+
+\subsubsection*{Por que \texttt{class\_weight} e SMOTE distorcem as probabilidades}
+
+No treino, os dois fazem o modelo ``ver'' a sepse como muito mais comum do que é (50\% com SMOTE equilibrando; peso 4 vezes maior com \cod{class\_weight='balanced'}). O modelo continua acertando \emph{quais} bebês são mais arriscados (a ordem se preserva, logo a AUROC não muda), mas parte de uma expectativa inicial errada. No caso idealizado, a correção é feita nas \textbf{odds} ($p/(1-p)$):
+\[
+\text{odds reais} = \text{odds do modelo}\times\frac{\text{odds da prevalência real}}{\text{odds da prevalência vista no treino}}.
+\]
+Com prevalência real de 20\% (odds $=0{,}25$) e treino equilibrado (odds $=1$), multiplica-se por 0,25:
+
+\begin{center}
+\small
+\begin{tabular}{@{}cccc@{}}
+\toprule
+\textbf{Modelo diz} & \textbf{Odds do modelo} & \textbf{Odds corrigidas} ($\times 0{,}25$) & \textbf{Probabilidade real} \\
+\midrule
+0,50 & 1 & 0,25 & \textbf{0,20} \\
+0,80 & 4 & 1,00 & \textbf{0,50} \\
+0,95 & 19 & 4,75 & \textbf{0,83} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+O modelo diz ``80\%'' e o risco real daquele perfil está mais perto de 50\%. A conta exata só vale no caso idealizado: com SMOTE, os pontos sintéticos distorcem ainda mais, então na prática a correção é feita \emph{com dados}, por recalibração.
+
+Isso também explica por que essas técnicas melhoram o recall e o F1 sem mudar a ordem dos bebês: usar \cod{class\_weight} e cortar em 0,5 equivale a usar o modelo ``normal'' com um corte bem mais baixo.
+
+\subsubsection*{Como se corrige: recalibração}
+
+Aprende-se uma segunda função que leva a saída do modelo à frequência real, \textbf{em todas as faixas ao mesmo tempo}.
+\begin{itemize}
+  \item \textbf{Platt scaling (sigmoide):} uma regressão logística de uma variável sobre a saída do modelo. Simples; funciona com poucos dados.
+  \item \textbf{Regressão isotônica:} uma função em degraus, mais flexível, mas que exige mais dados.
+\end{itemize}
+
+\begin{atencao}[a recalibração precisa de dados \emph{não vistos}]
+A função de recalibração deve ser ajustada em dados que o modelo \textbf{não usou para treinar} (por exemplo, as dobras de validação); caso contrário, volta o vazamento. A avaliação final da calibração é feita no \textbf{teste}, que mantém a prevalência real. No scikit-learn, o \cod{CalibratedClassifierCV} faz isso dentro da validação cruzada.
+\end{atencao}
+
+\begin{lstlisting}
+# Esboço ilustrativo (não é o código do repositório)
+from sklearn.calibration import calibration_curve, CalibratedClassifierCV
+from sklearn.metrics import brier_score_loss
+
+p = modelo.predict_proba(X_teste)[:, 1]            # probabilidade de sepse
+freq_real, media_prev = calibration_curve(y_teste, p, n_bins=5, strategy="quantile")
+print(brier_score_loss(y_teste, p))                # ingênuo com 20%: 0,16
+
+# recalibrar com dados não usados no treino (sigmoide)
+calibrado = CalibratedClassifierCV(modelo, method="sigmoid", cv=5)
+\end{lstlisting}
+
+\subsubsection*{Calibração $\times$ limiar: duas coisas diferentes}
+
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lp{5.2cm}p{5.2cm}@{}}
+\toprule
+ & \textbf{Calibração} & \textbf{Limiar (corte)} \\
+\midrule
+Pergunta & Os números do modelo batem com a realidade em todas as faixas? & A partir de qual probabilidade disparo o alarme? \\
+Natureza & Corrigir \textbf{todos} os números (uma função aplicada à curva inteira) & Escolher \textbf{um} valor \\
+Como & Platt scaling ou regressão isotônica & Por exemplo, maximizar o F1 na validação \\
+``Ponto ótimo'' & Não há: o objetivo é que todas as faixas fiquem na diagonal & Há: o corte que melhor atende ao critério escolhido \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+As duas se combinam: primeiro se corrigem os números (calibração), depois se escolhe o corte conforme o uso clínico. Com números calibrados, o corte é mais fácil de justificar (por exemplo, ``alarme quando o risco real estimado passar de 30\%'').
+
+\subsubsection*{Tendências por algoritmo e limites práticos}
+
+\begin{itemize}
+  \item \textbf{Regressão logística:} costuma sair razoavelmente calibrada, se não houver reponderação forte.
+  \item \textbf{Naive Bayes:} tende a ser exagerado, empurrando valores para perto de 0 e 1.
+  \item \textbf{Random Forest:} costuma ser conservador, com valores puxados para o meio.
+  \item \textbf{Árvore e KNN:} dão valores grosseiros (0; 0,2; 0,4\ldots), porque dependem de poucas folhas ou poucos vizinhos.
+  \item \textbf{Poucos casos:} com 105 a 175 casos de sepse, a curva fica ruidosa. Use poucas faixas (cerca de 5) e prefira a sigmoide à isotônica.
+  \item \textbf{Quando importa mais:} se o produto final é um alarme sim/não, a calibração pesa menos. Se o médico vai ver ``risco de 73\%'', ela é essencial: probabilidades infladas geram excesso de alarmes e fadiga de alarmes, que é o problema citado no projeto sobre o modelo avaliado por Wong et al.\ (2021).
+\end{itemize}
+
+\begin{teste}
+\begin{enumerate}
+  \item Um modelo tem VP = 18, FN = 22, FP = 12, VN = 148. Calcule acurácia, precisão, recall e F1.
+  \item Por que o falso negativo é, em geral, o erro mais grave neste problema?
+  \item O que acontece com recall e alarmes falsos quando se \emph{abaixa} o limiar?
+  \item Interprete uma AUROC de 0,82 com as suas palavras.
+  \item O modelo dá 0,80 ao bebê X. O que significa dizer que ele está calibrado nessa faixa? Dá para verificar isso olhando só o bebê X?
+  \item Por que recalibrar por sigmoide não muda a AUROC?
+  \item Um modelo treinado com classes equilibradas (50\%) diz 0,80 para um perfil, e a prevalência real é de 20\%. Qual a probabilidade real aproximada?
+  \item Qual a diferença entre calibrar as probabilidades e escolher o limiar?
+\end{enumerate}
+\end{teste}
+
+% ======================= 7 =======================
+\section{Os 8 algoritmos do Quadro 4}
+
+Cada algoritmo é uma ``família'' diferente de aprender. Como ninguém sabe qual funciona melhor com o dado real, o projeto compara oito abordagens.
+
+\subsection{Descrição de cada um}
+
+\begin{description}
+  \item[Regressão Logística (RL)] Soma ponderada das variáveis, transformada em probabilidade por uma curva em S (função logística). Cada peso diz quanto a variável aumenta ou diminui o risco, o que a torna muito interpretável. O botão principal é a \textbf{regularização} (\cod{C}): penaliza pesos grandes para evitar sobreajuste.
+  \item[Naive Bayes (NB)] Aplica o teorema de Bayes \textbf{supondo que as variáveis são independentes entre si} (por isso ``ingênuo''). Rapidíssimo e bom como linha de base, mas essa suposição raramente vale na prática (por exemplo, PCR e procalcitonina andam juntas).
+  \item[KNN ($k$ vizinhos mais próximos)] Para classificar um bebê novo, procura os $k$ bebês \textbf{mais parecidos} no treino e vota. Não há treino de verdade: ele guarda os dados e consulta na hora. ``Parecido'' é uma \emph{distância}, então as variáveis precisam estar na mesma escala. Com muitas colunas a distância perde sentido (\emph{maldição da dimensionalidade}: em muitas dimensões, todos os pontos ficam quase igualmente distantes). O botão principal é o $k$: pequeno demais vira ruído (sobreajuste); grande demais vira uma média sem graça (subajuste).
+  \item[Árvore de Decisão (DT)] Sequência de perguntas sim/não (``PCR $>$ 12? plaquetas $<$ 100?''). Muito interpretável, mas se aprofunda demais e decora o treino. Botões: \cod{max\_depth}, \cod{min\_samples\_leaf}.
+  \item[Random Forest (RF)] Muitas árvores, cada uma treinada numa amostra aleatória dos pacientes e das colunas, que depois \textbf{votam}. A diversidade entre as árvores compensa o defeito de cada uma (reduz variância). Resistente ao sobreajuste e pouco sensível a escala.
+  \item[Gradient Boosting (GB)] Árvores \textbf{em sequência}: cada nova árvore tenta corrigir os erros das anteriores. Botões: \cod{n\_estimators}, \cod{learning\_rate} (passo de cada correção) e \cod{max\_depth}. Costuma ser muito forte em dados tabulares, mas é sensível aos botões.
+  \item[XGBoost] Uma implementação muito otimizada e regularizada do gradient boosting. Geralmente a favorita em dados tabulares. Tem mais botões (\cod{subsample}, \cod{colsample\_bytree}, \cod{scale\_pos\_weight}).
+  \item[MLP (rede neural)] Camadas de ``neurônios'' que combinam as entradas e aplicam funções não lineares. Flexível, mas sensível aos botões e à escala, precisa de mais dados e é o menos interpretável. Botões: \cod{hidden\_layer\_sizes}, \cod{alpha} (regularização), \cod{learning\_rate\_init}.
+\end{description}
+
+\begin{atencao}[dois ``KNN'' diferentes]
+O KNN que \textbf{classifica} (este capítulo) não é o KNN que \textbf{preenche ausentes} (passo 4 do pré-processamento). A ideia dos vizinhos é a mesma; o uso, outro. O SMOTE também usa vizinhos, de um terceiro jeito.
+\end{atencao}
+
+\subsection{Quadro comparativo}
+
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.25}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lcccp{3.9cm}@{}}
+\toprule
+\textbf{Algoritmo} & \textbf{Exige escala?} & \textbf{Interpretável?} & \textbf{\texttt{class\_weight}?} & \textbf{Botões típicos} \\
+\midrule
+Reg. Logística & Sim & Alta & Sim & \cod{C}, penalidade \\
+Naive Bayes & Não & Média & Não (usa priors) & \cod{var\_smoothing} \\
+KNN & \textbf{Sim} & Média & \textbf{Não} & \cod{n\_neighbors}, \cod{weights} \\
+Árvore (DT) & Não & Alta & Sim & \cod{max\_depth}, \cod{min\_samples\_leaf} \\
+Random Forest & Não & Média & Sim & \cod{n\_estimators}, \cod{max\_depth}, \cod{max\_features} \\
+Gradient Boosting & Não & Média/baixa & Só \cod{sample\_weight} & \cod{n\_estimators}, \cod{learning\_rate}, \cod{max\_depth} \\
+XGBoost & Não & Média/baixa & \cod{scale\_pos\_weight} & idem, mais \cod{subsample} \\
+MLP & \textbf{Sim} & Baixa & \textbf{Não} & \cod{hidden\_layer\_sizes}, \cod{alpha} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Como o pré-processador já padroniza tudo, os modelos que exigem escala estão atendidos, e os demais não são prejudicados.
+
+\begin{teste}
+\begin{enumerate}
+  \item Por que o KNN depende de as variáveis estarem na mesma escala?
+  \item Qual a diferença de ideia entre Random Forest e Gradient Boosting?
+  \item Que sintoma você esperaria de uma árvore sem limite de profundidade?
+  \item Por que o Naive Bayes é chamado de ``ingênuo''?
+\end{enumerate}
+\end{teste}
+
+% ======================= 8 =======================
+\section{Interpretação: SHAP}
+
+Depois de escolher o melhor modelo, a pergunta passa a ser \emph{por que} ele prevê o que prevê.
+
+\begin{conceito}[valores SHAP]
+O \textbf{SHAP} (\emph{SHapley Additive exPlanations}) atribui a cada variável, \textbf{em cada paciente}, o quanto ela empurrou a previsão
+para cima ou para baixo em relação a uma previsão média. Vem dos valores de Shapley da teoria dos jogos: pensa-se nas variáveis como
+jogadores que cooperam para produzir a previsão e divide-se o ``crédito'' de forma justa.
+\end{conceito}
+
+Usos típicos: um gráfico de importância global (quais variáveis mais pesam no modelo) e explicações individuais (por que \emph{este} bebê recebeu risco alto).
+Para o contexto clínico é essencial, porque um modelo preciso mas opaco dificilmente é aceito.
+
+\begin{atencao}
+SHAP explica o \textbf{modelo}, não a \textbf{realidade}. Se o modelo usa uma variável que é consequência da sepse (zona cinzenta), o SHAP vai mostrá-la como importante, e isso é um alerta para o desenho dos dados, não uma descoberta clínica.
+\end{atencao}
+
+\begin{teste}
+\begin{enumerate}
+  \item O que um valor SHAP positivo para ``PCR'' num paciente significa?
+  \item Por que uma importância SHAP alta para \cod{dias\_utin} deve ser interpretada com cuidado?
+\end{enumerate}
+\end{teste}
+
+% ======================= 9 =======================
+\newpage
+\section{Como tudo se encaixa}
+
+\subsection{O fluxo completo}
+
+\begin{center}
+\begin{tikzpicture}[node distance=0.55cm,
+  caixa/.style={draw,rounded corners=2pt,fill=azulclaro,text width=9.2cm,align=center,minimum height=0.8cm,font=\small},
+  lacre/.style={draw,rounded corners=2pt,fill=laranjaclaro,text width=9.2cm,align=center,minimum height=0.8cm,font=\small},
+  seta/.style={-{Stealth[length=2.5mm]},thick}]
+  \node[caixa] (d) {Dados (CSV, 1 linha por bebê)};
+  \node[caixa,below=of d] (s) {Divisão 80/20, por paciente, estratificada};
+  \node[caixa,below=of s] (t) {\textbf{Treino}\\GridSearch: para cada combinação de hiperparâmetros\ldots};
+  \node[caixa,below=of t] (cv) {\ldots validação cruzada estratificada de 5 dobras};
+  \node[caixa,below=of cv] (p) {Em cada rodada, o Pipeline é refeito só com as dobras de estudo:\\imputar $\rightarrow$ escalar $\rightarrow$ (SMOTE \emph{ou} \cod{class\_weight}) $\rightarrow$ modelo};
+  \node[caixa,below=of p] (b) {Melhor combinação (maior F1 médio) $\rightarrow$ retreino com todo o treino};
+  \node[lacre,below=of b] (te) {\textbf{Teste lacrado}, aberto uma única vez:\\F1, precisão, recall, acurácia, AUROC, curva ROC};
+  \node[caixa,below=of te] (sh) {SHAP no melhor modelo};
+  \foreach \a/\b in {d/s,s/t,t/cv,cv/p,p/b,b/te,te/sh}{\draw[seta] (\a) -- (\b);}
+\end{tikzpicture}
+\end{center}
+
+Esse fluxo roda para cada um dos 8 algoritmos, e o resultado final é a comparação entre eles.
+
+\subsection{Mapa das etapas do repositório}
+
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}ll>{\raggedright\arraybackslash}p{7.2cm}@{}}
+\toprule
+\textbf{Etapa} & \textbf{Status} & \textbf{Conteúdo} \\
+\midrule
+0. Dados sintéticos & Concluída & \cod{gerador\_seed.py} \\
+1. Pré-processamento & Passos 1--3 feitos & \cod{preprocessamento.py}; passo 4 (KNN/iterativo, interruptor) adiado \\
+2. Desbalanceamento & Pendente & \cod{class\_weight} e SMOTE dentro da validação cruzada \\
+3. Mineração de dados & Pendente & 8 algoritmos + GridSearchCV \\
+4. Avaliação & Pendente & Métricas, validação cruzada $k=5$, curvas ROC; calibração (proposta, a validar com a orientadora) \\
+5. Interpretação & Pendente & SHAP \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Ordem proposta para a parte de modelos}
+
+\begin{enumerate}
+  \item Módulo de modelos com os 8 algoritmos e suas grades (enxuta e completa, escolhidas por uma opção), treino com \cod{class\_weight} e validação cruzada. Já dá um pipeline de ponta a ponta.
+  \item SMOTE como alternativa e o interruptor \cod{excluir\_sinalizadas}.
+  \item Avaliação no teste e curvas ROC.
+  \item SHAP e, se necessário, os refinamentos do passo 4.
+\end{enumerate}
+
+% ======================= 10 =======================
+\section{Pontos em aberto para discutir com a orientadora}
+
+\begin{itemize}
+  \item \textbf{Zona cinzenta.} Contar \cod{dias\_utin}, \cod{vm\_dias}, \cod{cvc\_dias} e \cod{npt\_dias} \textbf{até o momento da suspeita}, e não até a última evolução. Isso depende do conector com o prontuário.
+  \item \textbf{Seleção de variáveis.} Com cerca de 97 preditoras e 105 a 175 casos de sepse, o risco de sobreajuste é alto, e o projeto não prevê seleção de variáveis.
+  \item \textbf{Colapso das colunas \cod{\_pre} e \cod{\_pos24h}.} Todas as 99 colunas foram mantidas; juntar as janelas fica para depois, se necessário.
+  \item \textbf{Limiar de decisão.} O padrão de 0,5 pode ser inadequado para uma classe rara; ajustar o limiar é uma decisão de desenho.
+  \item \textbf{Calibração das probabilidades.} Se o produto final é o risco do bebê, convém acrescentar ao Quadro~5 uma curva de calibração e o escore de Brier; \cod{class\_weight} e SMOTE distorcem as probabilidades, o que pode exigir recalibrar.
+  \item \textbf{Procedimento de imputação.} O PDF do projeto não define qual usar (a referência da p.~40 aponta para um texto que não existe). A mediana é o padrão atual.
+\end{itemize}
+
+% ======================= APÊNDICE A =======================
+\appendix
+\section{Glossário}
+
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.2}
+\begin{longtable}{@{}p{3.6cm}p{3.6cm}p{7.2cm}@{}}
+\toprule
+\textbf{Termo (PT)} & \textbf{Termo (EN)} & \textbf{Definição curta} \\
+\midrule
+\endhead
+Variável preditora & feature & Coluna que descreve o paciente e entra no modelo \\
+Alvo & target / label & Coluna a prever (\cod{sepse\_tardia}) \\
+Treino / teste & train / test & Dados para aprender / prova final lacrada \\
+Vazamento & leakage & Informação indevida chegando ao treino, inflando a nota \\
+Dobra & fold & Um dos $k$ pedaços da validação cruzada \\
+Validação cruzada & cross-validation & Rodar $k$ mini-provas, trocando a dobra de validação \\
+Estratificada & stratified & Mantém a proporção das classes em cada divisão \\
+Hiperparâmetro & hyperparameter & Botão regulado antes do treino \\
+Busca em grade & grid search & Testar todas as combinações de uma grade de hiperparâmetros \\
+Sobreajuste & overfitting & Decorar o treino e falhar em dados novos \\
+Subajuste & underfitting & Modelo simples demais para o padrão \\
+Imputação & imputation & Preencher valores ausentes \\
+Padronização & standardization & Deixar média 0 e desvio-padrão 1 \\
+One-hot & one-hot encoding & Categoria vira colunas 0/1 \\
+Desbalanceamento & class imbalance & Classes com tamanhos muito diferentes \\
+Pesos de classe & class weights & Erro na classe rara pesa mais \\
+SMOTE & SMOTE & Criação de casos sintéticos da classe rara \\
+Matriz de confusão & confusion matrix & Tabela de VP, FP, VN, FN \\
+Precisão & precision & VP / (VP + FP) \\
+Recall / sensibilidade & recall / sensitivity & VP / (VP + FN) \\
+F1 & F1-score & Média harmônica de precisão e recall \\
+Limiar & threshold & Corte que transforma probabilidade em sim/não \\
+Calibração & calibration & Grau em que a probabilidade prevista bate com a frequência real (``30\%'' $\approx$ 30\% de casos) \\
+Escore de Brier & Brier score & Média de $(\text{probabilidade}-\text{resultado})^2$, com resultado 0 ou 1; menor é melhor \\
+Curva ROC & ROC curve & Taxa de verdadeiros positivos $\times$ falsos positivos, para todos os limiares \\
+AUROC & AUC / AUROC & Área sob a curva ROC \\
+Pipeline & pipeline & Encadeamento de passos tratado como um único objeto \\
+SHAP & SHAP & Contribuição de cada variável para cada previsão \\
+KDD & KDD & Processo de descoberta de conhecimento em bases de dados \\
+MCAR / MNAR & MCAR / MNAR & Ausência aleatória / ausência que depende do valor ou do estado \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+% ======================= APÊNDICE B =======================
+\section{Respostas do Teste-se}
+
+\textbf{Capítulo 1.}
+(1) Há exemplos com resposta conhecida (supervisionada) e o rótulo só tem dois valores (binária). O modelo, porém, estima uma probabilidade, que opcionalmente vira sim/não por um limiar.
+(2) Preditora descreve o paciente e entra no modelo; alvo é o que se quer prever.
+(3) O sinal foi plantado pelo gerador; os modelos ``descobrem'' o que nós colocamos, e o dado real será mais difícil.
+
+\textbf{Capítulo 2.}
+(1) Seria escolher o modelo olhando a prova final; a nota deixaria de ser honesta.
+(2) A primeira só existe para quem teve sepse (vazamento comprovado). A segunda pode ser consequência da sepse, mas também é plausível como preditora; é uma suspeita, e por isso fica com um interruptor de sensibilidade.
+(3) Sim: a mediana passa a carregar informação das linhas que irão para o teste.
+
+\textbf{Capítulo 3.}
+(1) Para o teste ser tratado como dado novo e não influenciar o que foi aprendido.
+(2) A mediana não é puxada pelos valores extremos da cauda longa.
+(3) Preserva o sinal de que o exame não foi medido; ajuda quando a ausência é informativa (MNAR).
+(4) O KNN usa distâncias, e uma coluna em escala grande dominaria; a árvore só compara cada coluna com um corte, então a escala não muda as divisões.
+
+\textbf{Capítulo 4.}
+(1) Faz a média de várias divisões, reduzindo o efeito do acaso, sobretudo com poucos casos positivos.
+(2) Parâmetro é aprendido (peso da regressão); hiperparâmetro é regulado por você (número de vizinhos).
+(3) $4\times4\times4=64$ combinações $\times\,5 = 320$ treinos (mais o retreino final).
+(4) Para que as estatísticas (mediana, escala) sejam recalculadas só com as dobras de estudo de cada rodada.
+
+\textbf{Capítulo 5.}
+(1) Um modelo que nunca prevê sepse já tem 80\%, mas não acha nenhum caso.
+(2) \cod{class\_weight} não altera os dados, só o peso do erro; o SMOTE cria casos sintéticos da classe rara.
+(3) Cópias quase iguais de um caso ficam no treino e na validação; o modelo é avaliado em algo que já viu.
+(4) KNN (e também o MLP).
+
+\textbf{Capítulo 6.}
+(1) Acurácia $=(18+148)/200=0{,}83$; precisão $=18/30=0{,}60$; recall $=18/40=0{,}45$; F1 $=2\cdot0{,}60\cdot0{,}45/1{,}05\approx0{,}51$.
+(2) Um bebê com sepse sem alarme pode ter o tratamento atrasado.
+(3) O recall sobe e os alarmes falsos também.
+(4) Em 82\% dos pares (um com sepse, um sem), o modelo dá nota maior ao bebê com sepse.
+(5) Que, entre os bebês a quem ele atribui cerca de 0,80, cerca de 80\% têm sepse. Não: para um bebê só o desfecho é 0 ou 1; a verificação é em grupo.
+(6) A sigmoide é uma transformação crescente: preserva a ordem dos bebês, e a AUROC só depende da ordem. (A isotônica pode criar empates e alterar um pouco.)
+(7) Odds do modelo $=4$; multiplicadas por 0,25, dão 1; logo, probabilidade de cerca de 0,50.
+(8) Calibrar corrige todos os números, em todas as faixas, para que batam com a frequência real; o limiar é um único valor que decide quando disparar o alarme.
+
+\textbf{Capítulo 7.}
+(1) Porque ``parecido'' é medido por distância; colunas com escala grande dominariam o cálculo.
+(2) Na RF as árvores são independentes e votam; no GB cada árvore corrige os erros das anteriores.
+(3) Sobreajuste: ótimo no treino, bem pior em dados novos.
+(4) Porque supõe que as variáveis são independentes entre si, o que raramente é verdade.
+
+\textbf{Capítulo 8.}
+(1) Que, para aquele paciente, o valor do PCR empurrou a previsão para mais risco de sepse, em relação à média.
+(2) Porque pode ser consequência da sepse (zona cinzenta); a importância alta pode refletir vazamento temporal e não efeito causal.
+
+\end{document}
