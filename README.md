@@ -1,83 +1,61 @@
-# TCC: predição de sepse neonatal tardia com aprendizado de máquina
+# Predição de sepse neonatal tardia com aprendizado de máquina
 
-Pipeline de aprendizado de máquina para prever **sepse neonatal tardia** (CID-10 A41.9 / P36) em recém-nascidos
-internados na UTIN, a partir de dados do prontuário eletrônico (SOUL MV). O desenho do estudo está em
-`Projeto_sepse_07_07.pdf` e segue as etapas do processo KDD (Descoberta de Conhecimento em Bases de Dados).
+Pipeline de aprendizado de máquina para estimar a probabilidade de **sepse neonatal tardia** (CID-10 A41.9 / P36) em
+recém-nascidos internados em Unidade de Terapia Intensiva Neonatal (UTIN), a partir de dados do prontuário eletrônico
+(SOUL MV). O desenho do estudo está em `Projeto_sepse_07_07.pdf` e segue o processo KDD (Descoberta de Conhecimento em Bases
+de Dados).
 
-Como os dados reais dependem de aprovação em comitê de ética (CEP) e do conector com o prontuário, o pipeline está
-sendo construído e testado com **dados sintéticos** gerados por este repositório. As métricas obtidas com eles
-**não têm valor científico**: servem para validar que o pipeline funciona de ponta a ponta.
+O problema é de classificação binária supervisionada (desfecho `sepse_tardia`: 0 ou 1), com saída em probabilidade. Os dados
+reais dependem de aprovação em comitê de ética e do conector com o prontuário; até lá, o pipeline é desenvolvido e testado com
+**dados sintéticos** gerados pelo próprio repositório. As métricas obtidas com eles **não têm valor científico**: servem para
+validar o funcionamento do pipeline e deixá-lo configurado para os dados reais.
 
-## Como estamos trabalhando
+## Etapas
 
-- **Uma etapa por vez**, com o conceito explicado antes do código.
-- **Módulos Python (`.py`)**, sem notebooks.
-- **Cada passo tem um plano versionado em `plans/`**, com decisões, o que foi implementado e histórico, para dar
-  rastreabilidade.
-- Dados nunca vão para o git: `data/` está no `.gitignore` (os reais serão privados; os sintéticos são regeneráveis).
+| Etapa | Descrição | Módulo | Estado |
+|---|---|---|---|
+| Dados sintéticos | Geração de um CSV com 1 linha por recém-nascido (99 colunas), prevalência configurável, sinal clínico plausível, exames seriados e valores ausentes | `gerador_seed.py` | Concluída |
+| Pré-processamento e transformação | Auditoria dos dados; divisão em treino (80%) e teste (20%), estratificada por desfecho; pré-processador (hemocultura, `log1p` nos exames de cauda longa, imputação pela mediana, indicador de ausência, padronização, one-hot) | `preprocessamento.py` | Concluída |
+| Modelos (mineração de dados) | Catálogo dos 8 algoritmos do Quadro 4 do projeto (RL, NB, KNN, DT, RF, GB, XGBoost, MLP) com grades de hiperparâmetros; busca em grade e validação cruzada (k = 5) simples e aninhada; tratamento do desbalanceamento por pesos de classe | `modelos.py`, `validacao.py` | Em andamento |
+| Avaliação | Avaliação final no conjunto de teste e curvas ROC; calibração das probabilidades (proposta) | | Prevista |
+| Interpretação | Valores SHAP do melhor modelo | | Prevista |
 
-## Passo a passo
+### Passos e planos
 
-### Etapa 0: dados sintéticos (seed)
+Cada etapa é dividida em passos numerados, com um plano versionado em `plans/<etapa>-passoN-plan.md` (decisões, implementação e
+desvios). A numeração recomeça a cada etapa, e por isso os passos são citados sempre com o nome da etapa.
 
-| | |
-|---|---|
-| Estado | **Concluída** |
-| Código | `gerador_seed.py`, `tests/test_gerador_seed.py` |
-| Plano | Removido de `plans/`; fica no histórico do git (`git show 8cc96a9:plans/seed-plan.md`) |
+| Etapa | Passo | Conteúdo | Estado |
+|---|---|---|---|
+| Pré-processamento | 1 | Carregamento e auditoria | Concluído |
+| Pré-processamento | 2 | Divisão treino/teste | Concluído |
+| Pré-processamento | 3 | Pré-processador | Concluído |
+| Pré-processamento | 4 | Estratégias de imputação e análise sem as variáveis sinalizadas | Reduzido: apenas a análise sem as variáveis sinalizadas permanece, incorporada a Modelos, passo 3 |
+| Pré-processamento | 5 | Fechamento da etapa | Concluído |
+| Modelos | 1 | Catálogo de modelos e montagem dos pipelines | Concluído |
+| Modelos | 2 | Busca em grade e validação cruzada, simples e aninhada | Concluído |
+| Modelos | 3 | SMOTE e interruptor `excluir_sinalizadas` | Plano elaborado |
+| Modelos | 4 | Avaliação no teste e curvas ROC | Previsto |
 
-Gera um CSV com 1 linha por recém-nascido e 99 colunas (97 preditoras, `id_paciente` e `sepse_tardia`), com as variáveis
-dos Quadros 2 e 3 do projeto, desfecho com prevalência configurável (padrão 20%), sinal clínico plausível, exames
-seriados (`_pre` e `_pos24h`) e valores ausentes.
+## Princípios metodológicos
 
-### Etapa 1: pré-processamento e transformação (KDD, etapas 2 e 3)
-
-| | |
-|---|---|
-| Código | `preprocessamento.py`, `tests/test_preprocessamento.py` |
-| Planos | [passo 1](plans/preprocessamento-passo1-plan.md), [passo 2](plans/preprocessamento-passo2-plan.md), [passo 3](plans/preprocessamento-passo3-plan.md), [passo 4](plans/preprocessamento-passo4-plan.md) |
-
-| Passo | O que é, em linguagem simples | Estado |
-|---|---|---|
-| 1. Carregar e auditar | Ler o CSV e fazer um "check-up": quantas linhas, quantos ausentes, se há coluna suspeita de vazamento | **Feito** |
-| 2. Dividir | Separar 80% dos pacientes para treinar e 20% para o teste final, mantendo a mesma proporção de sepse | **Feito** |
-| 3. Pré-processador | Preencher os ausentes, colocar os números na mesma escala e transformar texto em número, aprendendo só do treino | **Feito** |
-| 4. Estratégias e interruptores | Era: outras formas de preencher ausentes (KNN e iterativo) e a análise com e sem a "zona cinzenta". **Reduzido (aprovado em 2026-10-29):** o iterativo e o experimento de recuperação foram descartados; o KNN fica adiado como possível botão do GridSearchCV; só `excluir_sinalizadas` segue, na etapa de modelos. Ver o [plano](plans/preprocessamento-passo4-plan.md), seção 0 | **Reduzido (aprovado)** |
-| 5. Fechamento | Atualizar a documentação e fechar a etapa | **Feito** (o pré-processador do passo 3 é a versão final) |
-
-### Etapas seguintes
-
-| Etapa | O que faz |
-|---|---|
-| 2. Desbalanceamento | Reamostragem (SMOTE) ou pesos de classe, aplicados só dentro de cada dobra da validação cruzada |
-| 3. Mineração de dados | Treinar os algoritmos do Quadro 4 (GB, XGBoost, DT, KNN, RF, NB, RL, MLP) com GridSearchCV. **Passo 1 feito** (catálogo com grades enxuta e completa, e montagem dos pipelines; [plano](plans/modelos-passo1-plan.md)). **Passo 2 feito** (busca em grade e validação cruzada simples e aninhada, com as probabilidades fora da dobra; [plano](plans/modelos-passo2-plan.md)). Próximos: SMOTE e `excluir_sinalizadas` (passo 3), avaliação no teste e curvas ROC (passo 4) |
-| 4. Avaliação | Validação cruzada k = 5; F1-score (principal), acurácia, precisão, recall e AUROC; curvas ROC |
-| 5. Interpretação | Valores SHAP do melhor modelo |
-
-## Decisões importantes até agora
-
-- **Formato:** tabela plana, 1 linha por recém-nascido.
-- **Todas as 99 colunas foram mantidas;** colapsar (por exemplo, juntar `_pre` e `_pos24h`) fica para depois, se necessário.
-- **`dias_ate_dx_sepse` sai das variáveis de entrada.** Só existe para quem teve sepse, então prevê o desfecho por
+- O conjunto de teste permanece lacrado até a avaliação final.
+- Tudo o que é aprendido dos dados (medianas, escalas, estrutura do pré-processador, pesos de classe) provém apenas do treino de
+  cada rodada; a dobra de validação não influencia o ajuste. Isso é coberto por testes que falham se o vazamento reaparecer.
+- A coluna `dias_ate_dx_sepse` é removida das variáveis de entrada: só existe para quem teve sepse e prevê o desfecho por
   construção (vazamento de alvo).
-- **A "zona cinzenta" fica:** `dias_utin`, `vm_dias`, `cvc_dias`, `npt_dias` e `hemocultura_*` seguem como preditoras,
-  mas podem ser consequência da sepse. A recomendação para os dados reais é contar esses dias **até o momento da
-  suspeita**, e não até a última evolução.
-- **O conjunto de teste só é aberto no fim,** e tudo o que é "aprendido" dos dados (medianas, escalas) vem só do treino.
-- **Ausentes dos exames:** preenchidos pela mediana do treino; os exames com 20% ou mais de ausentes ganham também uma
-  coluna "foi medido?". Na hemocultura, o vazio de uma cultura negativa vira "não se aplica", e não "dado perdido".
-- **Exames de cauda longa** (PCR, PCT, lactato, leucócitos etc.) passam por `log1p` antes da padronização.
-- **Resultado no seed:** a matriz do treino fica com 800 linhas × 132 colunas, sem ausentes.
-- **A estrutura do pré-processador também é aprendida só do treino de cada rodada:** quais exames ganham o indicador
-  "foi medido?" e quais colunas são binárias são decididos no `fit`, e não olhando o treino inteiro (a revisão adversarial
-  mostrou que a dobra de validação influenciava isso).
-- **Desempenho estimado de duas formas:** busca simples (nota otimista do vencedor) e validação cruzada **aninhada** (nota
-  honesta). As probabilidades para as curvas ROC são as **fora da dobra** da aninhada; o teste só será aberto para o
-  modelo escolhido.
+- As variáveis `dias_utin`, `vm_dias`, `cvc_dias`, `npt_dias` e `hemocultura_*` ("zona cinzenta") permanecem como preditoras, mas
+  podem ser consequência da sepse. Com dados reais, recomenda-se contar esses dias até o momento da suspeita.
+- O desempenho é estimado de duas formas: busca simples (nota otimista do vencedor) e validação cruzada aninhada (nota honesta).
+  As probabilidades "fora da dobra" da validação aninhada são a base das curvas ROC.
+- O F1-score (limiar 0,5) é a métrica principal de seleção, conforme o projeto; acurácia, precisão, recall e AUROC também são
+  registradas.
+- Nos modelos sem suporte a `class_weight` no scikit-learn (KNN, NB e MLP), o modo de pesos de classe não aplica ajuste; o SMOTE
+  (Modelos, passo 3) cobre esses casos.
 
-## Como usar
+## Como executar
 
-Requer Python 3.11 ou superior. Os comandos abaixo são para o Windows (PowerShell), a partir da pasta do projeto.
+Requer Python 3.11 ou superior. Os comandos são para o Windows (PowerShell), a partir da pasta do projeto.
 
 ```powershell
 # Instalar as dependências (uma vez)
@@ -86,43 +64,49 @@ Requer Python 3.11 ou superior. Os comandos abaixo são para o Windows (PowerShe
 # 1. Gerar os dados sintéticos -> data/seed_sepse.csv
 .venv\Scripts\python.exe gerador_seed.py --n 1000 --prevalencia 0.20 --sinal 1.0 --ausentes 1.0 --seed 42
 
-# 2. Auditar, dividir em treino e teste (-> data/treino.csv e data/teste.csv) e ajustar o pré-processador no treino
+# 2. Auditar e dividir em treino e teste (-> data/treino.csv e data/teste.csv)
 .venv\Scripts\python.exe preprocessamento.py --entrada data/seed_sepse.csv --seed 42
 
-# 3. Listar o catálogo de modelos: nº de combinações das grades enxuta e completa e o ajuste de desbalanceamento
+# 3. Listar o catálogo de modelos (número de combinações das grades e ajuste de desbalanceamento)
 .venv\Scripts\python.exe modelos.py --listar
 
-# 4. Busca em grade + validação cruzada dos 8 modelos (só o treino; cerca de 3 min na grade enxuta, 16 núcleos)
+# 4. Busca em grade e validação cruzada dos 8 modelos, apenas com o treino (cerca de 3 min na grade enxuta)
 #    -> data/resultados/comparacao_enxuta_class_weight.csv e oof_enxuta_class_weight.csv
 .venv\Scripts\python.exe validacao.py --grade enxuta --desbalanceamento class_weight
 #    opções: --modelos RL DT (subconjunto), --n-jobs N, --desbalanceamento nenhum, --grade completa
 
-# Rodar os testes (cerca de 3 min; os de validação rodam modelos de verdade)
+# Testes automáticos (75; cerca de 2,5 min)
 .venv\Scripts\python.exe -m pytest
 ```
 
-Parâmetros do gerador: `--sinal` (0 = classes indistinguíveis, 1 = efeito completo), `--ausentes` (multiplicador das
-taxas de dados ausentes) e `--seed` (mesma semente gera exatamente o mesmo CSV).
+Parâmetros do gerador: `--sinal` (0 = classes indistinguíveis, 1 = efeito completo), `--ausentes` (multiplicador das taxas de
+dados ausentes) e `--seed` (a mesma semente gera o mesmo CSV).
 
 ## Estrutura
 
 ```
 gerador_seed.py            gerador de dados sintéticos
-preprocessamento.py        auditoria, divisão treino/teste e pré-processador (sklearn Pipeline, sem ajuste)
+preprocessamento.py        auditoria, divisão treino/teste e pré-processador
 modelos.py                 catálogo dos 8 algoritmos, grades de hiperparâmetros e montagem dos pipelines
-validacao.py               busca em grade e validação cruzada (simples e aninhada), só com o treino
-tests/                     testes automáticos (pytest)
-plans/                     planos versionados, um por passo
+validacao.py               busca em grade e validação cruzada (simples e aninhada)
+tests/                     testes automáticos (pytest), um arquivo por módulo
+plans/                     planos por passo
 docs/                      material de estudo (PDF e fonte LaTeX) com os conceitos do pipeline
-data/                      CSVs gerados (fora do git)
-Projeto_sepse_07_07.pdf    projeto de pesquisa (fonte dos requisitos)
+data/                      dados e resultados gerados (fora do git)
+Projeto_sepse_07_07.pdf    projeto de pesquisa
 requirements.txt           dependências
 ```
 
-## Limitações
+Os dados nunca são versionados: `data/` está no `.gitignore` (os dados reais serão privados e os sintéticos são regeneráveis).
 
-- Os pesos e efeitos do gerador são palpites clínicos, não estimados de dados reais; os modelos "descobrem" o que foi
-  plantado nos dados.
-- No dado real, os efeitos serão mais complexos e o desempenho deve ser pior.
-- Com ~700 pacientes e 15 a 25% de sepse (cerca de 105 a 175 casos) e 97 preditoras, há risco de sobreajuste; o projeto
-  não prevê seleção de variáveis, ponto a discutir com a orientadora.
+## Limitações e pendências
+
+- Os efeitos do gerador sintético são estimativas clínicas, e não derivam de dados reais; os modelos recuperam o que foi
+  plantado, e o desempenho com dados reais tende a ser inferior.
+- Com cerca de 700 pacientes, 15 a 25% de sepse (105 a 175 casos) e 97 preditoras, há risco de sobreajuste; o projeto não prevê
+  seleção de variáveis.
+- O desvio entre as dobras da validação não é um intervalo de confiança, pois as dobras compartilham a maior parte do treino.
+- Pontos a definir com a orientação do estudo: procedimento de imputação (não detalhado no projeto), calibração das
+  probabilidades (ausente do Quadro 5), limiar de decisão diferente de 0,5, seleção de variáveis e a contagem dos dias da zona
+  cinzenta até a suspeita.
+- SVM e redes neurais profundas, citados no Quadro 4 do projeto, serão avaliados após os 8 modelos do catálogo.
