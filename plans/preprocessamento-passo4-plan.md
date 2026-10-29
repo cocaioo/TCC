@@ -6,10 +6,30 @@ Plano do passo 4. Referências a "plano geral" são ao antigo `preprocessamento-
 
 | | |
 |---|---|
-| **Status** | Plano escrito em 2026-10-28; **aguardando aprovação** (nada implementado) |
+| **Status** | Plano escrito em 2026-10-28. **Escopo reduzido em 2026-10-29 (aprovado pelo usuário)**; nada implementado neste passo |
 | **Branch** | `create-pipeline` |
-| **Código previsto** | `preprocessamento.py`, `tests/test_preprocessamento.py` |
-| **Escopo escolhido** | Completo + experimento de recuperação, com o iterativo incluído (usuário) |
+| **Código previsto** | Original: `preprocessamento.py`, `tests/test_preprocessamento.py`. Após a redução: só o interruptor `excluir_sinalizadas`, a ser feito na etapa de modelos |
+| **Escopo escolhido** | Original: completo + experimento de recuperação, com o iterativo incluído (usuário). Ver a seção 0 para a revisão |
+
+## 0. Revisão de escopo (2026-10-29, após a revisão conceitual)
+
+> Este plano foi escrito antes da revisão conceitual (SMOTE, GridSearchCV, validação cruzada). As seções 1 a 9 abaixo
+> são o **plano original, mantido para rastreabilidade**; o que vale é esta seção, **aprovada pelo usuário em 2026-10-29**.
+
+O passo 4 tinha três partes (a `estrategia`, com duas variantes, o experimento `comparar_imputacao` e o interruptor
+`excluir_sinalizadas`). Avaliadas à luz do restante do pipeline, só o interruptor tem justificativa própria:
+
+| Parte | O que faz | Proposta | Motivo |
+|---|---|---|---|
+| `estrategia` = `knn` | Imputação pelos vizinhos mais próximos | **Adiar**, como possível botão do GridSearchCV depois que o pipeline rodar de ponta a ponta | A pergunta "qual imputação é melhor?" é respondida de forma mais direta pelo F1 do modelo final. O KNN é barato (0,3 s por ajuste) |
+| `estrategia` = `iterativo` | Imputação por regressões repetidas | **Descartar** | 16,6 s por ajuste, com `ConvergenceWarning`; inviável dentro de uma busca em grade (5 dobras × combinações). O próprio plano original já previa descartá-lo se não houvesse ganho claro |
+| `comparar_imputacao` | Esconde valores conhecidos e mede o erro de recuperação | **Descartar** | Mede uma métrica "interna" da imputação, sobreposta pelo GridSearchCV. Com dado sintético e ausência aleatória (MCAR), o resultado não informa nada sobre o dado real |
+| `excluir_sinalizadas` | Treina sem a "zona cinzenta" (`dias_utin`, `vm_dias`, `cvc_dias`, `npt_dias`, `hemocultura_*`) | **Manter, mas na etapa de modelos**, como opção do pipeline (análise de sensibilidade) | Não se sobrepõe a nada: responde se o desempenho depende de variáveis que podem ser consequência da sepse. É barato. Detalhes de desenho nas seções 3 (C9) e 4 (P20) abaixo |
+
+**Consequência para o pré-processamento:** o pré-processador do passo 3 (mediana, padrão inalterado) é a versão final desta
+etapa; o passo 5 (fechamento) fica só com a documentação. As decisões P17 a P19, P21 a P24 e os testes 2, 3 e 6 da seção 6
+**não serão implementados** (revisão aprovada).
+
 
 ## 1. Contexto
 

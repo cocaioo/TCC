@@ -42,8 +42,8 @@ seriados (`_pre` e `_pos24h`) e valores ausentes.
 | 1. Carregar e auditar | Ler o CSV e fazer um "check-up": quantas linhas, quantos ausentes, se há coluna suspeita de vazamento | **Feito** |
 | 2. Dividir | Separar 80% dos pacientes para treinar e 20% para o teste final, mantendo a mesma proporção de sepse | **Feito** |
 | 3. Pré-processador | Preencher os ausentes, colocar os números na mesma escala e transformar texto em número, aprendendo só do treino | **Feito** |
-| 4. Estratégias e interruptores | Opções extras: outras formas de preencher ausentes (KNN e iterativo) e a análise com e sem as variáveis da "zona cinzenta" | Pendente |
-| 5. Fechamento | Testes automáticos, atualização do plano e commit | Pendente |
+| 4. Estratégias e interruptores | Era: outras formas de preencher ausentes (KNN e iterativo) e a análise com e sem a "zona cinzenta". **Reduzido (aprovado em 2026-10-29):** o iterativo e o experimento de recuperação foram descartados; o KNN fica adiado como possível botão do GridSearchCV; só `excluir_sinalizadas` segue, na etapa de modelos. Ver o [plano](plans/preprocessamento-passo4-plan.md), seção 0 | **Reduzido (aprovado)** |
+| 5. Fechamento | Atualizar a documentação e fechar a etapa | **Feito** (o pré-processador do passo 3 é a versão final) |
 
 ### Etapas seguintes (ainda sem plano)
 
@@ -97,6 +97,7 @@ gerador_seed.py            gerador de dados sintéticos
 preprocessamento.py        auditoria, divisão treino/teste e pré-processador (sklearn Pipeline, sem ajuste)
 tests/                     testes automáticos (pytest)
 plans/                     planos versionados, um por passo
+docs/                      material de estudo (PDF e fonte LaTeX) com os conceitos do pipeline
 data/                      CSVs gerados (fora do git)
 Projeto_sepse_07_07.pdf    projeto de pesquisa (fonte dos requisitos)
 requirements.txt           dependências
