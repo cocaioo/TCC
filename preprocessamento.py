@@ -14,6 +14,7 @@ Uso:
 
 import argparse
 import sys
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -35,7 +36,7 @@ COL_ALVO = "sepse_tardia"
 COL_EXCLUIDA = "dias_ate_dx_sepse"
 
 # Preditoras previstas no PDF cujo valor pode ser CONSEQUÊNCIA da sepse (totais da internação e resultado da
-# hemocultura). Ficam por padrão; `excluir_vazamento=True` (passo 4) permite compará-las com e sem.
+# hemocultura). Ficam por padrão; o interruptor `excluir_sinalizadas` (etapa de modelos) permitirá compará-las com e sem.
 COLS_SINALIZADAS = [
     "dias_utin", "vm_dias", "cvc_dias", "npt_dias",
     "hemocultura_resultado", "hemocultura_agente", "perfil_sensibilidade",
@@ -230,6 +231,23 @@ def _para_float(X):
     return X.astype(float)
 
 
+def _selecionar_binarias(X, categoricas, exames):
+    """Colunas 0/1 (valores observados dentro de {0, 1}); passam sem escala. Roda no `fit`, com os dados recebidos."""
+    return [c for c in X.columns
+            if c not in categoricas and c not in exames and (v := set(X[c].dropna().unique())) and v <= {0, 1}]
+
+
+def _selecionar_numericas(X, categoricas, exames):
+    """As demais colunas (numéricas e exames): mediana -> padronização. Roda no `fit`."""
+    binarias = _selecionar_binarias(X, categoricas, exames)
+    return [c for c in X.columns if c not in categoricas and c not in binarias]
+
+
+def _selecionar_com_indicador(X, exames, limiar):
+    """Exames com ausência >= `limiar` nos dados recebidos no `fit` ganham a coluna "foi medido?"."""
+    return [c for c in exames if X[c].isna().mean() >= limiar]
+
+
 def construir_preprocessador(X_treino, limiar_indicador=LIMIAR_INDICADOR_PADRAO):
     """Devolve o pré-processador (`Pipeline` do scikit-learn) SEM ajuste; saída em DataFrame com nomes de colunas.
 
@@ -239,27 +257,20 @@ def construir_preprocessador(X_treino, limiar_indicador=LIMIAR_INDICADOR_PADRAO)
       indicador de ausência ("foi medido?") só para exames com ausência >= `limiar_indicador` no treino;
       categóricas          ausente vira "ausente" -> one-hot (categoria nova no teste vira zeros).
 
-    `X_treino` só é consultado para decidir QUAIS colunas entram em cada ramo (binárias; exames acima do limiar);
-    nenhum valor é aprendido aqui nem o alvo é usado. Os valores (medianas, médias, desvios) só são aprendidos
-    quando o pipeline é ajustado, com o treino ou com cada dobra da validação cruzada.
+    `X_treino` só fornece os NOMES das colunas (categóricas e exames, que se reconhecem pelo nome). O que depende dos
+    VALORES (quais colunas são binárias; quais exames passam do limiar de ausência) é decidido no `fit`, com os dados
+    que o pipeline recebe: o treino, ou só as dobras de estudo na validação cruzada. Assim, a dobra de validação não
+    influencia nem a estrutura do modelo. O alvo nunca é usado.
     """
     categoricas = [c for c in COLS_CATEGORICAS if c in X_treino.columns]
     exames = [c for c in X_treino.columns if c.endswith(SUFIXOS_EXAME)]
-    binarias = []
-    for coluna in X_treino.columns:
-        valores = set(X_treino[coluna].dropna().unique())
-        if coluna not in categoricas and coluna not in exames and valores and valores <= {0, 1}:
-            binarias.append(coluna)
-    numericas = [c for c in X_treino.columns if c not in categoricas and c not in binarias]
-
-    taxa_ausente = X_treino[exames].isna().mean()
-    com_indicador = taxa_ausente[taxa_ausente >= limiar_indicador].index.tolist()
 
     colunas = ColumnTransformer([
-        ("bin", "passthrough", binarias),
+        ("bin", "passthrough", partial(_selecionar_binarias, categoricas=categoricas, exames=exames)),
         ("num", Pipeline([("imputar", SimpleImputer(strategy="median")), ("escalar", StandardScaler())]),
-         numericas),
-        ("ind", MissingIndicator(features="all"), com_indicador),
+         partial(_selecionar_numericas, categoricas=categoricas, exames=exames)),
+        ("ind", MissingIndicator(features="all"),
+         partial(_selecionar_com_indicador, exames=exames, limiar=limiar_indicador)),
         ("cat", Pipeline([("imputar", SimpleImputer(strategy="constant", fill_value="ausente")),
                           ("codificar", OneHotEncoder(handle_unknown="ignore", drop="if_binary",
                                                       sparse_output=False))]), categoricas),

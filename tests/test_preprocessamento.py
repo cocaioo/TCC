@@ -232,3 +232,21 @@ def test_preprocessador_nasce_sem_ajuste_e_e_reajustavel(X_treino_teste):
     with pytest.raises(NotFittedError):
         prep.transform(X_tr)
     pd.testing.assert_frame_equal(prep.fit_transform(X_tr), clone(prep).fit_transform(X_tr))
+
+
+def test_estrutura_do_modelo_e_decidida_no_fit_e_nao_no_construtor(X_treino_teste):
+    """As linhas que não entram no `fit` (a dobra de validação, na validação cruzada) não podem mudar a estrutura:
+    quais exames ganham o indicador "foi medido?" é decidido só com as linhas ajustadas."""
+    X_tr, _ = X_treino_teste
+    exame = "pcr_pos24h"
+    X = X_tr.copy()
+    ajuste, fora = X.index[:400], X.index[400:]
+    X.loc[ajuste, exame] = X.loc[ajuste, exame].fillna(X.loc[ajuste, exame].median())  # sem ausentes
+    X.loc[fora, exame] = np.nan  # toda ausente: a taxa do X inteiro (cerca de 50%) passa do limiar de 20%
+
+    colunas = construir_preprocessador(X).fit(X.loc[ajuste]).transform(X.loc[ajuste]).columns
+    assert f"missingindicator_{exame}" not in colunas  # com as linhas ajustadas, a ausência é 0%
+    pd.testing.assert_index_equal(colunas, construir_preprocessador(X.loc[ajuste]).fit(X.loc[ajuste])
+                                  .transform(X.loc[ajuste]).columns)
+    # controle: ajustando com todas as linhas, o indicador entra
+    assert f"missingindicator_{exame}" in construir_preprocessador(X).fit(X).transform(X).columns

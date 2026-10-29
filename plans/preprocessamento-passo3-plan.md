@@ -10,6 +10,12 @@ Plano do passo 3, como foi aprovado, com os desvios da implementação no fim. R
 | **Branch** | `create-pipeline` |
 | **Código** | `preprocessamento.py` (`tratar_ausentes_estruturais`, `aplicar_log1p`, `construir_preprocessador`), `tests/test_preprocessamento.py` |
 
+> **Revisão de 2026-10-29 (adversarial, antes do commit dos passos de modelos):** a decisão de QUAIS colunas são binárias e
+> QUAIS exames recebem o indicador "foi medido?" (P4, P12) deixou de ser tomada em `construir_preprocessador` com o treino
+> inteiro e passou para o `fit` (seletores de coluna no `ColumnTransformer`). Motivo: na validação cruzada, a dobra de
+> validação influenciava a estrutura do modelo. `X_treino` agora só fornece nomes de colunas. Resultado no seed inalterado
+> (800 × 132, 11 indicadores). Teste novo em `tests/test_preprocessamento.py`.
+
 ## 1. Contexto
 
 Os passos 1 (auditar) e 2 (dividir 80/20) estão prontos e commitados (`98d2266`). Falta transformar `X_treino` em uma matriz
