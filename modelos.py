@@ -18,6 +18,7 @@ import argparse
 import math
 import sys
 
+import numpy as np
 from sklearn.base import clone
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -93,7 +94,27 @@ class GradientBoostingBalanceado(GradientBoostingClassifier):
         return super().fit(X, y, sample_weight=peso, **kwargs)
 
 
-def _estimador(nome, desbalanceamento, prevalencia, seed):
+class XGBClassifierBalanceado(XGBClassifier):
+    """XGBoost que, a cada `fit`, dá aos positivos o peso (negativos / positivos) do `y` que recebe.
+
+    Mesma razão de pesos do `scale_pos_weight`, mas aplicada como peso por amostra e calculada com o `y` de CADA ajuste
+    (cada dobra), e não com um número fixo vindo do treino inteiro. Não é numericamente idêntica ao `scale_pos_weight`
+    (numa amostra de teste, a diferença máxima nas probabilidades foi de 0,08, com médias iguais); o efeito é o mesmo.
+    Sem parâmetro novo no `__init__`, então `clone` e o GridSearchCV funcionam normalmente.
+    """
+
+    def fit(self, X, y, sample_weight=None, **kwargs):
+        y = np.asarray(y)
+        n_positivos = int((y == 1).sum())
+        if n_positivos == 0:
+            raise ValueError("y sem nenhum positivo: não há como calcular o peso da classe positiva")
+        peso = np.where(y == 1, (y == 0).sum() / n_positivos, 1.0)
+        if sample_weight is not None:
+            peso = peso * sample_weight
+        return super().fit(X, y, sample_weight=peso, **kwargs)
+
+
+def _estimador(nome, desbalanceamento, seed):
     """Estimador SEM ajuste de um dos 8 modelos, com o ajuste de desbalanceamento pedido (quando o modelo o aceita)."""
     pesos = {"class_weight": "balanced"} if desbalanceamento == "class_weight" else {}
     if nome == "RL":
@@ -110,10 +131,9 @@ def _estimador(nome, desbalanceamento, prevalencia, seed):
         classe = GradientBoostingBalanceado if pesos else GradientBoostingClassifier
         return classe(random_state=seed)
     if nome == "XGBoost":
-        # negativos/positivos: com as dobras estratificadas, a prevalência de cada dobra é praticamente a do treino
-        extra = {"scale_pos_weight": (1 - prevalencia) / prevalencia} if pesos else {}
+        classe = XGBClassifierBalanceado if pesos else XGBClassifier
         # n_jobs=1: o paralelismo fica na busca em grade (n_jobs do GridSearchCV); sem isso, as threads do XGBoost competem
-        return XGBClassifier(eval_metric="logloss", random_state=seed, n_jobs=1, **extra)
+        return classe(eval_metric="logloss", random_state=seed, n_jobs=1)
     if nome == "MLP":
         return MLPClassifier(max_iter=500, early_stopping=True, random_state=seed)
     raise ValueError(f"modelo desconhecido: {nome!r}")
@@ -128,20 +148,18 @@ def construir_pipeline(preprocessador, estimador):
     return Pipeline([("prep", clone(preprocessador)), ("modelo", estimador)])
 
 
-def catalogo(prevalencia, grade="enxuta", desbalanceamento="nenhum", seed=42):
+def catalogo(grade="enxuta", desbalanceamento="nenhum", seed=42):
     """Devolve `{nome: (estimador, grade_de_hiperparametros)}` para os 8 modelos, tudo SEM ajuste.
 
-    `prevalencia` (fração de sepse do treino, `y_treino.mean()`) só é usada no `scale_pos_weight` do XGBoost.
+    Nenhum valor vem dos dados: os pesos de classe (GB e XGBoost) são calculados no `fit`, com o `y` de cada ajuste.
     A grade vem no formato do GridSearchCV, com o prefixo `modelo__` (os estimadores são o passo "modelo" do pipeline).
     """
     if grade not in GRADES:
         raise ValueError(f"grade deve ser uma de {GRADES}, recebi {grade!r}")
     if desbalanceamento not in DESBALANCEAMENTO:
         raise ValueError(f"desbalanceamento deve ser um de {DESBALANCEAMENTO}, recebi {desbalanceamento!r}")
-    if desbalanceamento == "class_weight" and not 0 < prevalencia < 1:
-        raise ValueError(f"prevalencia deve estar entre 0 e 1 (exclusivo), recebi {prevalencia!r}")
     return {
-        nome: (_estimador(nome, desbalanceamento, prevalencia, seed),
+        nome: (_estimador(nome, desbalanceamento, seed),
                {f"modelo__{parametro}": list(valores) for parametro, valores in _GRADES[nome][grade].items()})
         for nome in MODELOS
     }
@@ -153,16 +171,16 @@ def n_combinacoes(grade_de_hiperparametros):
 
 
 def imprimir_catalogo():
-    enxuta = catalogo(0.20, "enxuta")
-    completa = catalogo(0.20, "completa")
+    enxuta = catalogo("enxuta")
+    completa = catalogo("completa")
     print(f"{'modelo':<9}{'enxuta':>8}{'completa':>10}  ajuste de desbalanceamento (modo class_weight)")
     for nome in MODELOS:
         if nome in SEM_PESOS:
             ajuste = "nenhum (o scikit-learn não tem class_weight)"
         elif nome == "XGBoost":
-            ajuste = "scale_pos_weight = negativos/positivos"
+            ajuste = "peso dos positivos = negativos/positivos, por ajuste (XGBClassifierBalanceado)"
         elif nome == "GB":
-            ajuste = "pesos por amostra (GradientBoostingBalanceado)"
+            ajuste = "pesos por amostra, por ajuste (GradientBoostingBalanceado)"
         else:
             ajuste = 'class_weight="balanced"'
         print(f"{nome:<9}{n_combinacoes(enxuta[nome][1]):>8}{n_combinacoes(completa[nome][1]):>10}  {ajuste}")

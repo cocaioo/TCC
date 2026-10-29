@@ -44,7 +44,7 @@ ROC (passo 4); calibração (proposta a validar com a orientadora); SVM e redes 
 | P2 | Duas grades por modelo, escolhidas por parâmetro: `"enxuta"` (testar o pipeline, rápida) e `"completa"` (dado real) | Mantidas as duas no código, para não reescrever quando os dados reais chegarem | Usuário (conversa de 2026-10-29) |
 | P3 | Valores das grades | Os das tabelas da seção 5, como **valores iniciais "a revisar"**; não são ajustados ao seed | Proposta |
 | P4 | Desbalanceamento | `construir_pipeline(..., desbalanceamento="nenhum" \| "class_weight")` neste passo; `"smote"` entra no passo 3. Valor desconhecido levanta `ValueError` | Proposta; começar com `class_weight` (usuário) |
-| P5 | Como aplicar `class_weight` | Modelos que aceitam o parâmetro (RL, DT, RF) recebem `class_weight="balanced"`; XGBoost recebe `scale_pos_weight` = negativos/positivos (da prevalência do treino); GB usa um subtipo que pesa as amostras (ver P6); **KNN, NB e MLP não têm esse recurso no scikit-learn e rodam sem ajuste**, o que fica registrado | Proposta (limite do scikit-learn, ver capítulo 5.2 do material) |
+| P5 | Como aplicar `class_weight` | Modelos que aceitam o parâmetro (RL, DT, RF) recebem `class_weight="balanced"`; GB e XGBoost usam subtipos que calculam o peso a cada `fit` (ver P6 e a atualização de 2026-10-29, seção 11; o plano original usava `scale_pos_weight` com a prevalência do treino inteiro); **KNN, NB e MLP não têm esse recurso no scikit-learn e rodam sem ajuste**, o que fica registrado | Proposta (limite do scikit-learn, ver capítulo 5.2 do material) |
 | P6 | Gradient Boosting com pesos | Subclasse mínima `GradientBoostingBalanceado` cujo `fit` calcula `compute_sample_weight("balanced", y)` e o repassa. Sem parâmetro novo no `__init__`, então `clone` e o `GridSearchCV` funcionam normalmente (cerca de 6 linhas) | Proposta. Alternativa: GB sem ajuste neste modo (mais simples, mas deixa o GB em desvantagem na comparação) |
 | P7 | SVM e redes profundas do PDF | **Fora do catálogo inicial.** Entram depois dos 8 rodarem de ponta a ponta, com a regra de exclusão por resultado < 70% | Proposta; **precisa da sua confirmação** |
 | P8 | Reprodutibilidade | `random_state=42` em todo estimador que o aceite; um parâmetro `seed` | Proposta |
@@ -59,12 +59,12 @@ ROC (passo 4); calibração (proposta a validar com a orientadora); SVM e redes 
 construir_pipeline(preprocessador, estimador, desbalanceamento)
    -> Pipeline([("prep", preprocessador), ("modelo", estimador)])
 
-catalogo(prevalencia, grade="enxuta", desbalanceamento="nenhum", seed=42)
+catalogo(grade="enxuta", desbalanceamento="nenhum", seed=42)
    -> { "RL": (estimador, {"modelo__C": [...]}), "NB": (...), ... }   # 8 entradas
 ```
 
-- `prevalencia` vem de `y_treino.mean()` e serve só ao `scale_pos_weight` do XGBoost. Como as dobras são estratificadas, a
-  prevalência de cada dobra é praticamente igual à do treino, então um valor fixo basta.
+- Nenhum valor vem dos dados: os pesos de classe de GB e XGBoost são calculados no `fit`, com o `y` de cada ajuste (o plano
+  original tinha um argumento `prevalencia`, removido em 2026-10-29).
 - O catálogo devolve estimadores **sem ajuste**; quem ajusta é o passo 2 (GridSearchCV).
 - `python modelos.py --listar` imprime o catálogo: modelo, nº de combinações em cada grade, e se aceita `class_weight`. Serve
   para você enxergar a configuração sem rodar nada.
@@ -108,8 +108,8 @@ todas); fica como decisão do passo 2.
 3. Cada um dos 8 pipelines, ajustado numa amostra do treino (cerca de 200 linhas), faz `predict_proba` com formato
    `(n, 2)`, sem `NaN` e com linhas somando 1.
 4. `clone(pipeline)` funciona (necessário para o GridSearchCV), inclusive com `GradientBoostingBalanceado`.
-5. `desbalanceamento="class_weight"`: RL, DT e RF ficam com `class_weight="balanced"`; XGBoost recebe `scale_pos_weight`
-   próximo de 4 com 20% de prevalência; KNN, NB e MLP não são alterados.
+5. `desbalanceamento="class_weight"`: RL, DT e RF ficam com `class_weight="balanced"`; XGBoost e GB usam os subtipos
+   `*Balanceado`; KNN, NB e MLP não são alterados.
 6. `GradientBoostingBalanceado` dá probabilidades diferentes do GB simples em dados desbalanceados (o peso é aplicado).
 7. `desbalanceamento` ou `grade` desconhecidos levantam `ValueError`.
 8. O primeiro passo de todo pipeline é o pré-processador (`prep`), e ele **ainda não está ajustado** (nada aprendido antes da
@@ -165,7 +165,7 @@ Este arquivo (status, o que foi implementado e desvios), o `README.md` (etapa 3 
 
 ## 11. Implementação e desvios
 
-**Entregue** em `modelos.py`: `catalogo(prevalencia, grade, desbalanceamento, seed)`, `construir_pipeline(preprocessador,
+**Entregue** em `modelos.py`: `catalogo(grade, desbalanceamento, seed)`, `construir_pipeline(preprocessador,
 estimador)`, `GradientBoostingBalanceado`, `n_combinacoes` e o comando `--listar`. Em `tests/test_modelos.py`: 12 testes.
 Verificação: **50 testes passam** (38 anteriores + 12 novos); `--listar` confirma 59 combinações na grade enxuta e 325 na
 completa (295 e 1625 ajustes com 5 dobras).
@@ -183,7 +183,16 @@ completa (295 e 1625 ajustes com 5 dobras).
 `XGBClassifier` passou a `n_jobs=1` (o paralelismo fica na busca em grade); `catalogo` devolve cópias das listas das
 grades; a mensagem de `--listar` agora conta os ajustes reais de `validacao.py` (busca simples + aninhada 5x5 = 30 por
 combinação: 1770 na enxuta e 9750 na completa, fora os refits); `tests/test_modelos.py` passou a 18 testes (valores reais
-das grades ajustados, semente, parâmetros fixos, peso do usuário no GB e prevalência 1,0).
+das grades ajustados, semente, parâmetros fixos, peso do usuário no GB).
+
+**Atualização de 2026-10-29 (peso do XGBoost por ajuste):** o `scale_pos_weight` calculado com a prevalência do treino inteiro
+foi substituído por `XGBClassifierBalanceado`, que calcula o peso dos positivos (negativos/positivos) com o `y` de cada
+`fit`, ou seja, de cada dobra. Motivo: a regra do projeto (tudo o que é aprendido vem só do treino de cada rodada) vale
+mesmo para um número escalar, e o GB já funcionava assim. Com isso, o argumento `prevalencia` do `catalogo` foi removido
+(deixaria de ter uso). A razão de pesos é a mesma do `scale_pos_weight`, mas o resultado não é numericamente idêntico: numa
+amostra de teste, a diferença máxima nas probabilidades foi de 0,08, com médias iguais. Testes: `tests/test_modelos.py`
+passou a 20 (peso por ajuste verificado com um espião; peso do usuário preservado; falha se não houver positivos); das 3
+mutações aplicadas ao novo código, as 3 foram detectadas.
 
 **Observações da implementação:** nenhum modelo foi ajustado nos dados reais do `data/`; o teste lacrado continua intocado. Os
 testes ajustam os modelos só em amostras de 300 linhas do treino sintético, para validar o encanamento.

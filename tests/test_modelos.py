@@ -9,12 +9,14 @@ from sklearn.exceptions import NotFittedError
 from sklearn.model_selection import ParameterGrid, train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.utils.validation import check_is_fitted
+from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from gerador_seed import gerar_seed  # noqa: E402
 from modelos import (  # noqa: E402
-    GRADES, MODELOS, SEM_PESOS, GradientBoostingBalanceado, catalogo, construir_pipeline, n_combinacoes,
+    GRADES, MODELOS, SEM_PESOS, GradientBoostingBalanceado, XGBClassifierBalanceado, catalogo, construir_pipeline,
+    n_combinacoes,
 )
 from preprocessamento import COL_ALVO, construir_preprocessador, dividir, separar_x_y  # noqa: E402
 
@@ -43,7 +45,7 @@ def prep(dados):
 
 def test_catalogo_tem_os_8_modelos_nas_duas_grades():
     for grade in GRADES:
-        cat = catalogo(PREVALENCIA, grade)
+        cat = catalogo(grade)
         assert tuple(cat) == MODELOS and len(cat) == 8
         for estimador, parametros in cat.values():
             assert hasattr(estimador, "fit") and parametros
@@ -51,13 +53,13 @@ def test_catalogo_tem_os_8_modelos_nas_duas_grades():
 
 
 def test_numero_de_combinacoes_das_grades():
-    total = {g: sum(n_combinacoes(gr) for _, gr in catalogo(PREVALENCIA, g).values()) for g in GRADES}
+    total = {g: sum(n_combinacoes(gr) for _, gr in catalogo(g).values()) for g in GRADES}
     assert total == {"enxuta": 59, "completa": 325}
 
 
 def test_todo_hiperparametro_de_toda_grade_existe_no_pipeline(prep):
     for grade in GRADES:
-        for nome, (estimador, parametros) in catalogo(PREVALENCIA, grade).items():
+        for nome, (estimador, parametros) in catalogo(grade).items():
             combinacoes = list(ParameterGrid(parametros))
             for combinacao in (combinacoes[0], combinacoes[-1]):
                 construir_pipeline(prep, estimador).set_params(**combinacao)  # erro de digitação levanta ValueError
@@ -65,7 +67,7 @@ def test_todo_hiperparametro_de_toda_grade_existe_no_pipeline(prep):
 
 def test_cada_pipeline_ajusta_e_devolve_probabilidades(prep, amostra):
     X, y = amostra
-    for nome, (estimador, _) in catalogo(PREVALENCIA).items():
+    for nome, (estimador, _) in catalogo().items():
         p = construir_pipeline(prep, estimador).fit(X, y).predict_proba(X)
         assert p.shape == (len(X), 2), nome
         assert not np.isnan(p).any(), nome
@@ -74,7 +76,7 @@ def test_cada_pipeline_ajusta_e_devolve_probabilidades(prep, amostra):
 
 def test_clone_dos_pipelines_funciona(prep):
     for modo in ("nenhum", "class_weight"):
-        for nome, (estimador, _) in catalogo(PREVALENCIA, desbalanceamento=modo).items():
+        for nome, (estimador, _) in catalogo(desbalanceamento=modo).items():
             pipe = construir_pipeline(prep, estimador)
             copia = clone(pipe)
             assert type(copia["modelo"]) is type(pipe["modelo"]), nome
@@ -82,21 +84,21 @@ def test_clone_dos_pipelines_funciona(prep):
 
 
 def test_class_weight_nos_modelos_que_aceitam():
-    cat = catalogo(PREVALENCIA, desbalanceamento="class_weight")
-    base = catalogo(PREVALENCIA, desbalanceamento="nenhum")
+    cat = catalogo(desbalanceamento="class_weight")
+    base = catalogo(desbalanceamento="nenhum")
     for nome in ("RL", "DT", "RF"):
         assert cat[nome][0].get_params()["class_weight"] == "balanced"
-    assert cat["XGBoost"][0].get_params()["scale_pos_weight"] == pytest.approx(4.0)
+    assert isinstance(cat["XGBoost"][0], XGBClassifierBalanceado)
     assert isinstance(cat["GB"][0], GradientBoostingBalanceado)
     for nome in SEM_PESOS:  # sem suporte no scikit-learn: ficam como no modo "nenhum"
         assert cat[nome][0].get_params() == base[nome][0].get_params()
 
 
 def test_modo_nenhum_nao_pesa_nada():
-    cat = catalogo(PREVALENCIA, desbalanceamento="nenhum")
+    cat = catalogo(desbalanceamento="nenhum")
     for nome in ("RL", "DT", "RF"):
         assert cat[nome][0].get_params()["class_weight"] is None
-    assert cat["XGBoost"][0].get_params()["scale_pos_weight"] is None
+    assert type(cat["XGBoost"][0]) is XGBClassifier
     assert type(cat["GB"][0]) is GradientBoostingClassifier
 
 
@@ -113,16 +115,14 @@ def test_gradient_boosting_balanceado_aplica_o_peso(prep, amostra):
 
 def test_opcoes_invalidas_levantam_erro():
     with pytest.raises(ValueError, match="grade"):
-        catalogo(PREVALENCIA, grade="gigante")
+        catalogo(grade="gigante")
     with pytest.raises(ValueError, match="desbalanceamento"):
-        catalogo(PREVALENCIA, desbalanceamento="smote")  # entra só no passo 3
-    with pytest.raises(ValueError, match="prevalencia"):
-        catalogo(0.0, desbalanceamento="class_weight")
+        catalogo(desbalanceamento="smote")  # entra só no passo 3
 
 
 def test_preprocessador_e_o_primeiro_passo_e_nao_esta_ajustado(prep, amostra):
     X, y = amostra
-    cat = catalogo(PREVALENCIA)
+    cat = catalogo()
     p1 = construir_pipeline(prep, cat["RL"][0])
     p2 = construir_pipeline(prep, cat["DT"][0])
     assert p1.steps[0][0] == "prep"
@@ -138,8 +138,8 @@ def test_preprocessador_e_o_primeiro_passo_e_nao_esta_ajustado(prep, amostra):
 def test_mesma_semente_mesmas_probabilidades(prep, amostra):
     X, y = amostra
     for nome in MODELOS:
-        a = construir_pipeline(prep, catalogo(PREVALENCIA, seed=7)[nome][0]).fit(X, y).predict_proba(X)
-        b = construir_pipeline(prep, catalogo(PREVALENCIA, seed=7)[nome][0]).fit(X, y).predict_proba(X)
+        a = construir_pipeline(prep, catalogo(seed=7)[nome][0]).fit(X, y).predict_proba(X)
+        b = construir_pipeline(prep, catalogo(seed=7)[nome][0]).fit(X, y).predict_proba(X)
         assert np.allclose(a, b), nome
 
 
@@ -153,7 +153,7 @@ def test_valores_reais_das_grades_ajustam_primeira_do_meio_e_ultima(prep, amostr
     X, y = amostra
     X, y = X.iloc[:150], y.iloc[:150]
     for grade in GRADES:
-        for nome, (estimador, parametros) in catalogo(PREVALENCIA, grade, "class_weight").items():
+        for nome, (estimador, parametros) in catalogo(grade, "class_weight").items():
             combinacoes = list(ParameterGrid(parametros))
             for combinacao in (combinacoes[0], combinacoes[len(combinacoes) // 2], combinacoes[-1]):
                 pipe = construir_pipeline(prep, estimador).set_params(**combinacao).fit(X, y)
@@ -162,13 +162,13 @@ def test_valores_reais_das_grades_ajustam_primeira_do_meio_e_ultima(prep, amostr
 
 def test_semente_chega_a_todo_modelo_estocastico():
     for semente in (1, 42):
-        cat = catalogo(PREVALENCIA, seed=semente)
+        cat = catalogo(seed=semente)
         for nome in ("RL", "DT", "RF", "GB", "XGBoost", "MLP"):
             assert cat[nome][0].get_params()["random_state"] == semente, nome
 
 
 def test_parametros_fixos_decididos_no_plano():
-    cat = catalogo(PREVALENCIA)
+    cat = catalogo()
     assert cat["MLP"][0].get_params()["early_stopping"] is True and cat["MLP"][0].get_params()["max_iter"] == 500
     assert cat["RL"][0].get_params()["max_iter"] == 2000
     assert cat["XGBoost"][0].get_params()["n_jobs"] == 1  # o paralelismo fica na busca em grade
@@ -184,11 +184,39 @@ def test_gradient_boosting_balanceado_respeita_o_peso_do_usuario(prep, amostra):
     assert np.allclose(esperado.predict_proba(Xp), obtido.predict_proba(Xp))
 
 
-def test_prevalencia_igual_a_1_tambem_e_rejeitada():
-    with pytest.raises(ValueError, match="prevalencia"):
-        catalogo(1.0, desbalanceamento="class_weight")
+def test_xgboost_balanceado_calcula_o_peso_a_cada_fit(monkeypatch):
+    """O peso dos positivos (negativos/positivos) vem do `y` de cada ajuste, e não de um número fixo."""
+    capturados = []
+
+    def espiao(self, X, y, sample_weight=None, **kwargs):
+        capturados.append(np.asarray(sample_weight))
+        return self
+
+    monkeypatch.setattr(XGBClassifier, "fit", espiao)
+    X = np.zeros((100, 2))
+    for n_positivos in (10, 30):  # duas "dobras" com prevalências diferentes
+        y = np.r_[np.ones(n_positivos), np.zeros(100 - n_positivos)].astype(int)
+        XGBClassifierBalanceado().fit(X, y)
+    (peso_10, peso_30) = capturados
+    assert set(peso_10[:10]) == {90 / 10} and set(peso_10[10:]) == {1.0}
+    assert set(peso_30[:30]) == {70 / 30} and set(peso_30[30:]) == {1.0}
+    XGBClassifierBalanceado().fit(X, y, sample_weight=np.full(100, 2.0))  # o peso do usuário é preservado
+    assert set(capturados[-1][:30]) == {2 * 70 / 30}
+
+
+def test_xgboost_balanceado_exige_positivos():
+    with pytest.raises(ValueError, match="positivo"):
+        XGBClassifierBalanceado().fit(np.zeros((20, 2)), np.zeros(20, dtype=int))
+
+
+def test_xgboost_balanceado_sobe_as_probabilidades(prep, amostra):
+    X, y = amostra
+    Xp = clone(prep).fit_transform(X)
+    simples = XGBClassifier(n_estimators=50, random_state=0, n_jobs=1).fit(Xp, y).predict_proba(Xp)[:, 1]
+    balanceado = XGBClassifierBalanceado(n_estimators=50, random_state=0, n_jobs=1).fit(Xp, y).predict_proba(Xp)[:, 1]
+    assert balanceado.mean() > simples.mean()  # a classe rara pesa mais
 
 
 def test_grades_devolvidas_nao_compartilham_listas():
-    catalogo(PREVALENCIA)["RL"][1]["modelo__C"].append(999)
-    assert 999 not in catalogo(PREVALENCIA)["RL"][1]["modelo__C"]
+    catalogo()["RL"][1]["modelo__C"].append(999)
+    assert 999 not in catalogo()["RL"][1]["modelo__C"]

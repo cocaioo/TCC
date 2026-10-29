@@ -52,7 +52,7 @@ Valores **sem valor científico** (o sinal foi plantado pelo gerador): só mostr
 | Modelo | F1 aninhado | dp(F1) | AUROC | Precisão | Recall | F1 busca simples | Otimismo |
 |---|---|---|---|---|---|---|---|
 | RL | 0,969 | 0,001 | 0,999 | 0,958 | 0,981 | 0,972 | 0,003 |
-| XGBoost | 0,968 | 0,019 | 0,997 | 0,988 | 0,950 | 0,972 | 0,003 |
+| XGBoost | 0,968 | 0,011 | 0,997 | 0,988 | 0,950 | 0,972 | 0,003 |
 | GB | 0,962 | 0,014 | 0,998 | 0,975 | 0,950 | 0,964 | 0,002 |
 | RF | 0,956 | 0,029 | 0,998 | 0,970 | 0,944 | 0,961 | 0,005 |
 | MLP | 0,925 | 0,039 | 0,995 | 0,934 | 0,919 | 0,922 | -0,003 |
@@ -77,8 +77,9 @@ inválidas (poucos positivos, rótulos que não são 0 e 1, `X` que não é Data
 ## 5. Observações
 
 - O desvio entre dobras (ddof=1) **não é um intervalo de confiança**: as dobras compartilham a maior parte do treino.
-- O `scale_pos_weight` do XGBoost usa a prevalência do treino inteiro (diferença de ordem 1/n entre dobras estratificadas;
-  é um número, não um valor aprendido da dobra de validação). Limitação aceita e documentada.
+- ~~O `scale_pos_weight` do XGBoost usava a prevalência do treino inteiro.~~ **Corrigido em 2026-10-29:** o peso dos
+  positivos agora é calculado com o `y` de cada ajuste (`XGBClassifierBalanceado`, ver o plano do passo 1, seção 11), então
+  nada vem do treino inteiro nem da dobra de validação.
 - O F1 em limiar 0,5 é uma métrica ruidosa para KNN (probabilidades discretas), e os modelos sem ajuste de classe (KNN, NB,
   MLP) não competem em igualdade com os ponderados no modo `class_weight`. O SMOTE (passo 3) ajuda a equilibrar.
 - **Para o passo 3 (`excluir_sinalizadas`):** `tratar_ausentes_estruturais` exige a coluna `hemocultura_resultado`; tirar as
@@ -102,13 +103,14 @@ de teste e sem alterar arquivos. Cada achado foi confirmado antes de corrigir.
 | Testes fracos: 31 mutações plausíveis aplicadas, várias sobreviviam (`oof` invertido, precisão↔recall, `best_index_`, desvio, otimismo, argumentos do catálogo, CLI...) | Média/alta | 9 testes novos em `test_validacao.py` e 6 em `test_modelos.py`; das 21 mutações reaplicadas, **21 morrem** |
 | Documentação: README sem `validacao.py` e sem plano do passo 2; contagem de ajustes subestimada em `--listar` | Baixa | Este plano, README e mensagem do `--listar` corrigidos |
 
-Registrados sem mudar o código: `scale_pos_weight` com o `y` inteiro e o desvio não ser intervalo de confiança (seção 5).
+Registrado sem mudar o código: o desvio entre dobras não ser intervalo de confiança (seção 5). O `scale_pos_weight` com o `y`
+inteiro, que estava aqui, foi corrigido depois (seção 5).
 Não confirmado pelas revisões e mantido: nenhum vazamento do alvo (alvo embaralhado nos 8 modelos: AUROC entre 0,49 e 0,58;
 resultado idêntico com 1 ou vários núcleos).
 
 ## 7. Verificação (2026-10-29)
 
-1. `pytest -q`: **73 testes passam** (17 do gerador, 22 do pré-processador, 18 de modelos, 16 de validação), cerca de 2,5 min.
+1. `pytest -q`: **75 testes passam** (17 do gerador, 22 do pré-processador, 20 de modelos, 16 de validação), cerca de 2,5 min.
 2. `python validacao.py --grade enxuta --desbalanceamento class_weight`: os 8 modelos rodam por inteiro (cerca de 3 min com
    16 núcleos), **0 avisos** no log, arquivos gravados em `data/resultados/`.
 3. Mutações: das 21 reaplicadas em uma cópia do projeto, 21 são detectadas pela suíte; a cópia sem mutação passa.

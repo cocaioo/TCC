@@ -163,7 +163,7 @@ def test_catalogo_real_recebe_os_argumentos_certos(treino, monkeypatch):
     comparar_modelos(X, y, ids, grade="enxuta", desbalanceamento="class_weight", modelos=["RL"], seed=7,
                      n_dobras=3, n_jobs=1, verbose=False)
     (args, _), = chamadas
-    assert args[0] == pytest.approx(float(y.mean())) and args[1:] == ("enxuta", "class_weight", 7)
+    assert args == ("enxuta", "class_weight", 7)
 
 
 def test_modelos_repetidos_ou_em_texto_sao_normalizados(treino):

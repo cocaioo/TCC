@@ -131,16 +131,13 @@ def comparar_modelos(X, y, ids=None, grade="enxuta", desbalanceamento="class_wei
     oof     DataFrame com `id_paciente`, o alvo e a probabilidade fora da dobra de cada modelo.
 
     O pré-processador é construído UMA vez, mas só os NOMES das colunas vêm daqui: tudo o que depende de valores (colunas
-    binárias, exames com indicador de ausência, medianas, escalas) é decidido de novo no `fit` de cada dobra.
-
-    Limitação conhecida: o `scale_pos_weight` do XGBoost (modo class_weight) usa a prevalência do treino inteiro. Com
-    dobras estratificadas ela é praticamente a mesma em todas (diferença da ordem de 1/n), e é só um número, não um valor
-    aprendido da dobra de validação.
+    binárias, exames com indicador de ausência, medianas, escalas, pesos de classe) é decidido de novo no `fit` de cada
+    dobra.
     """
     X, y = _preparar(X, y, n_dobras)
     if ids is not None and len(ids) != len(y):
         raise ValueError(f"ids e y têm números de linhas diferentes ({len(ids)} e {len(y)})")
-    cat = mini_catalogo if mini_catalogo is not None else catalogo(float(y.mean()), grade, desbalanceamento, seed)
+    cat = mini_catalogo if mini_catalogo is not None else catalogo(grade, desbalanceamento, seed)
     if isinstance(modelos, str):
         modelos = [modelos]
     escolhidos = list(dict.fromkeys(modelos)) if modelos else list(cat)  # sem repetidos, na ordem dada
