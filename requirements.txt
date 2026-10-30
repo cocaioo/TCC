@@ -4,3 +4,5 @@ scikit-learn>=1.5
 pytest>=8.0
 xgboost>=3.0
 imbalanced-learn>=0.13
+matplotlib>=3.8
+shap>=0.46

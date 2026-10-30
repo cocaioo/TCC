@@ -20,6 +20,7 @@ import time
 import warnings
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.base import clone
@@ -33,11 +34,12 @@ from preprocessamento import COL_ALVO, COL_ID, carregar, construir_preprocessado
 N_DOBRAS = 5  # k-fold com k = 5 (p. 46 do PDF), na busca e na validação externa
 
 # F1, precisão e recall com zero_division=0: uma dobra sem nenhum positivo previsto vale 0, e não um aviso.
-# `roc_auc` e `accuracy` usam os nomes do scikit-learn.
+# Especificidade = recall da classe negativa (VN / (VN + FP)). `roc_auc` e `accuracy` usam os nomes do scikit-learn.
 METRICAS = {
     "f1": make_scorer(f1_score, zero_division=0),
     "precisao": make_scorer(precision_score, zero_division=0),
     "recall": make_scorer(recall_score, zero_division=0),
+    "especificidade": make_scorer(recall_score, pos_label=0, zero_division=0),
     "acuracia": "accuracy",
     "auroc": "roc_auc",
 }
@@ -85,6 +87,7 @@ def _metricas(y_real, previsao, proba):
         "f1": f1_score(y_real, previsao, zero_division=0),
         "precisao": precision_score(y_real, previsao, zero_division=0),
         "recall": recall_score(y_real, previsao, zero_division=0),
+        "especificidade": recall_score(y_real, previsao, pos_label=0, zero_division=0),
         "acuracia": accuracy_score(y_real, previsao),
         "auroc": roc_auc_score(y_real, proba),
     }
@@ -93,8 +96,9 @@ def _metricas(y_real, previsao, proba):
 def avaliar_modelo(pipeline, grade, X, y, n_dobras=N_DOBRAS, seed=42, n_jobs=1):
     """Busca simples e validação aninhada de UM modelo. `X` e `y` são o treino (DataFrame e Series).
 
-    Devolve `{"simples": {...}, "aninhada": {...}, "oof": array}`; `oof[i]` é a probabilidade de sepse do paciente `i`
-    prevista por um modelo que NÃO o viu (nem na busca de hiperparâmetros).
+    Devolve `{"simples": {...}, "aninhada": {...}, "oof": array, "final": pipeline}`; `oof[i]` é a probabilidade de
+    sepse do paciente `i` prevista por um modelo que NÃO o viu (nem na busca de hiperparâmetros). `final` é o vencedor
+    da busca simples reajustado no treino inteiro: o modelo final deste algoritmo, medido no teste por `avaliacao.py`.
     """
     X, y = _preparar(X, y, n_dobras)
 
@@ -119,16 +123,18 @@ def avaliar_modelo(pipeline, grade, X, y, n_dobras=N_DOBRAS, seed=42, n_jobs=1):
     # generalização, porque as dobras compartilham a maior parte do treino.
     aninhada = {"media": tabela.mean().to_dict(), "desvio": tabela.std(ddof=1).to_dict(), "melhores": melhores,
                 "por_dobra": tabela}
-    return {"simples": simples, "aninhada": aninhada, "oof": oof}
+    return {"simples": simples, "aninhada": aninhada, "oof": oof, "final": busca.best_estimator_}
 
 
 def comparar_modelos(X, y, ids=None, grade="enxuta", desbalanceamento="class_weight", modelos=None,
-                     n_dobras=N_DOBRAS, seed=42, n_jobs=-1, mini_catalogo=None, verbose=True):
-    """Avalia os modelos pedidos (padrão: os 8) e devolve `(tabela, oof)`.
+                     n_dobras=N_DOBRAS, seed=42, n_jobs=-1, mini_catalogo=None, verbose=True, devolver_modelos=False):
+    """Avalia os modelos pedidos (padrão: os 8) e devolve `(tabela, oof)`, ou `(tabela, oof, finais)` com
+    `devolver_modelos=True`.
 
     tabela  uma linha por modelo: métricas da validação aninhada (média e desvio das dobras externas), a nota otimista
             da busca simples e os melhores hiperparâmetros da busca simples;
-    oof     DataFrame com `id_paciente`, o alvo e a probabilidade fora da dobra de cada modelo.
+    oof     DataFrame com `id_paciente`, o alvo e a probabilidade fora da dobra de cada modelo;
+    finais  `{modelo: pipeline}` com o vencedor da busca simples de cada modelo, reajustado no treino inteiro.
 
     O pré-processador é construído UMA vez, mas só os NOMES das colunas vêm daqui: tudo o que depende de valores (colunas
     binárias, exames com indicador de ausência, medianas, escalas, pesos de classe) é decidido de novo no `fit` de cada
@@ -146,7 +152,7 @@ def comparar_modelos(X, y, ids=None, grade="enxuta", desbalanceamento="class_wei
         raise ValueError(f"modelos desconhecidos: {desconhecidos}; os disponíveis são {list(cat)}")
 
     prep = construir_preprocessador(X)
-    linhas = []
+    linhas, finais = [], {}
     oof = pd.DataFrame({COL_ID: np.asarray(ids) if ids is not None else np.arange(len(y)), COL_ALVO: y.to_numpy()})
     for nome in escolhidos:
         estimador, grade_hiper = cat[nome]
@@ -158,22 +164,41 @@ def comparar_modelos(X, y, ids=None, grade="enxuta", desbalanceamento="class_wei
         linhas.append({
             "modelo": nome,
             "f1": media["f1"], "f1_desvio": desvio["f1"], "auroc": media["auroc"], "precisao": media["precisao"],
-            "recall": media["recall"], "acuracia": media["acuracia"],
+            "recall": media["recall"], "especificidade": media["especificidade"], "acuracia": media["acuracia"],
             "f1_busca_simples": r["simples"]["f1"],
             "otimismo_f1": r["simples"]["f1"] - media["f1"],
             "melhores_params": r["simples"]["params"], "segundos": segundos,
         })
         oof[nome] = r["oof"]
+        finais[nome] = r["final"]
         if verbose:
             print(f"  {nome:<8} F1 aninhado {media['f1']:.3f} | AUROC {media['auroc']:.3f} | {segundos:.0f} s", flush=True)
     tabela = pd.DataFrame(linhas).set_index("modelo")
-    return tabela, oof
+    return (tabela, oof, finais) if devolver_modelos else (tabela, oof)
+
+
+def gravar(tabela, oof, finais, saida_dir, grade, desbalanceamento):
+    """Grava `comparacao_<grade>_<modo>.csv`, `oof_<grade>_<modo>.csv` e `modelos_<grade>_<modo>/<modelo>.joblib`.
+
+    A pasta de modelos é esvaziada antes, para não sobrar um modelo de uma rodada anterior com outra seleção."""
+    saida_dir = Path(saida_dir)
+    sufixo = f"{grade}_{desbalanceamento}"
+    pasta = saida_dir / f"modelos_{sufixo}"
+    pasta.mkdir(parents=True, exist_ok=True)
+    for antigo in pasta.glob("*.joblib"):
+        antigo.unlink()
+    tabela.to_csv(saida_dir / f"comparacao_{sufixo}.csv", encoding="utf-8")
+    oof.to_csv(saida_dir / f"oof_{sufixo}.csv", index=False, encoding="utf-8")
+    for nome, pipeline in finais.items():
+        joblib.dump(pipeline, pasta / f"{nome}.joblib")
+    return sufixo
 
 
 def imprimir_tabela(tabela):
-    colunas = ["f1", "f1_desvio", "auroc", "precisao", "recall", "acuracia", "f1_busca_simples", "otimismo_f1", "segundos"]
+    colunas = ["f1", "f1_desvio", "auroc", "precisao", "recall", "especificidade", "acuracia", "f1_busca_simples",
+               "otimismo_f1", "segundos"]
     cabecalho = {"f1": "F1", "f1_desvio": "dp(F1)", "auroc": "AUROC", "precisao": "precisão", "recall": "recall",
-                 "acuracia": "acurácia", "f1_busca_simples": "F1 simples", "otimismo_f1": "otimismo", "segundos": "seg"}
+                 "especificidade": "especif.", "acuracia": "acurácia", "f1_busca_simples": "F1 simples", "otimismo_f1": "otimismo", "segundos": "seg"}
     print(tabela[colunas].rename(columns=cabecalho).to_string(float_format=lambda v: f"{v:.3f}"))
     print("\nmelhores hiperparâmetros (busca simples):")
     for nome, params in tabela["melhores_params"].items():
@@ -200,16 +225,13 @@ def main():
     X, y = separar_x_y(df)
     print(f"treino: {len(df)} pacientes, {int(y.sum())} com sepse ({y.mean():.1%}); grade {args.grade}; "
           f"desbalanceamento {args.desbalanceamento}\n(o conjunto de teste não é lido)\n")
-    tabela, oof = comparar_modelos(X, y, df[COL_ID], args.grade, args.desbalanceamento, args.modelos,
-                                   seed=args.seed, n_jobs=args.n_jobs)
+    tabela, oof, finais = comparar_modelos(X, y, df[COL_ID], args.grade, args.desbalanceamento, args.modelos,
+                                           seed=args.seed, n_jobs=args.n_jobs, devolver_modelos=True)
     print()
     imprimir_tabela(tabela)
 
-    args.saida_dir.mkdir(parents=True, exist_ok=True)
-    sufixo = f"{args.grade}_{args.desbalanceamento}"
-    tabela.to_csv(args.saida_dir / f"comparacao_{sufixo}.csv", encoding="utf-8")
-    oof.to_csv(args.saida_dir / f"oof_{sufixo}.csv", index=False, encoding="utf-8")
-    print(f"\ngravado em {args.saida_dir}: comparacao_{sufixo}.csv e oof_{sufixo}.csv")
+    sufixo = gravar(tabela, oof, finais, args.saida_dir, args.grade, args.desbalanceamento)
+    print(f"\ngravado em {args.saida_dir}: comparacao_{sufixo}.csv, oof_{sufixo}.csv e modelos_{sufixo}/")
 
 
 if __name__ == "__main__":

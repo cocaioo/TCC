@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
 import pytest
@@ -16,7 +17,7 @@ from gerador_seed import gerar_seed  # noqa: E402
 from modelos import construir_pipeline  # noqa: E402
 from preprocessamento import COL_ID, construir_preprocessador, dividir, separar_x_y  # noqa: E402
 from validacao import (  # noqa: E402
-    METRICAS, _busca, _escolher_melhor, _metricas, _preparar, avaliar_modelo, comparar_modelos,
+    METRICAS, _busca, _escolher_melhor, _metricas, _preparar, avaliar_modelo, comparar_modelos, gravar,
 )
 
 # Categoria rara que cai só na dobra de validação vira "zeros" no one-hot (por desenho); o aviso inunda a saída dos testes.
@@ -111,6 +112,7 @@ def test_metricas_conferidas_a_mao():
     assert m["precisao"] == pytest.approx(1 / 2)
     assert m["recall"] == pytest.approx(1 / 3)
     assert m["f1"] == pytest.approx(0.4)
+    assert m["especificidade"] == pytest.approx(3 / 4)  # VN / (VN + FP)
     assert m["acuracia"] == pytest.approx(4 / 7)
     assert m["auroc"] == pytest.approx(10 / 12)  # 10 dos 12 pares (positivo, negativo) em ordem certa
 
@@ -213,6 +215,7 @@ def test_cli_grava_os_dois_arquivos(tmp_path, monkeypatch):
     oof = pd.read_csv(saida / "oof_enxuta_class_weight.csv")
     assert list(comparacao.index) == ["NB"] and 0 <= comparacao.loc["NB", "f1"] <= 1
     assert len(oof) == 300 and oof["NB"].between(0, 1).all() and oof[COL_ID].is_unique
+    assert [p.name for p in (saida / "modelos_enxuta_class_weight").iterdir()] == ["NB.joblib"]
 
 
 # --- SMOTE ----------------------------------------------------------------------------------------------------
@@ -234,3 +237,36 @@ def test_comparar_modelos_com_smote_mantem_o_oof_alinhado(treino, monkeypatch):
     assert len(montados) == 2 and not oof[["RL", "DT"]].isna().any().any()
     assert (oof[COL_ID].to_numpy() == ids.to_numpy()).all()
     assert roc_auc_score(oof["sepse_tardia"], oof["RL"]) > 0.8  # continua informativo e alinhado
+
+
+# --- Modelos finais (passo 3) -------------------------------------------------------------------------------------
+
+
+def test_modelos_finais_sao_os_vencedores_reajustados_e_sobrevivem_ao_disco(treino, tmp_path):
+    X, y, ids = treino
+    tabela, oof, finais = rodar(X, y, ids, devolver_modelos=True)
+    assert set(finais) == {"RL", "DT"}
+    for nome, pipe in finais.items():  # é o vencedor da busca simples, em todos os hiperparâmetros da grade
+        melhores = tabela.loc[nome, "melhores_params"]
+        assert melhores and {k: pipe.get_params()[k] for k in melhores} == melhores
+    gravar(tabela, oof, finais, tmp_path, "enxuta", "nenhum")
+    for nome, pipe in finais.items():
+        recarregado = joblib.load(tmp_path / "modelos_enxuta_nenhum" / f"{nome}.joblib")
+        assert np.allclose(recarregado.predict_proba(X), pipe.predict_proba(X))
+    assert (tmp_path / "comparacao_enxuta_nenhum.csv").exists() and (tmp_path / "oof_enxuta_nenhum.csv").exists()
+
+
+def test_gravar_apaga_modelos_de_rodada_anterior(treino, tmp_path):
+    X, y, ids = treino
+    tabela, oof, finais = rodar(X, y, ids, modelos=["RL"], devolver_modelos=True)
+    pasta = tmp_path / "modelos_enxuta_nenhum"
+    pasta.mkdir()
+    (pasta / "DT.joblib").write_text("modelo velho")
+    gravar(tabela, oof, finais, tmp_path, "enxuta", "nenhum")
+    assert sorted(p.name for p in pasta.iterdir()) == ["RL.joblib"]
+
+
+def test_especificidade_entra_na_tabela(treino):
+    X, y, ids = treino
+    tabela, _ = rodar(X, y, ids)
+    assert tabela["especificidade"].between(0, 1).all()
