@@ -91,8 +91,11 @@ dados não têm valor científico; servem para verificar o funcionamento do pipe
 | Os 8 algoritmos do Quadro 4 | Implementados |
 | `GridSearchCV` e validação cruzada com k = 5 | Implementados (validação simples e aninhada) |
 | Métricas do Quadro 5 | Implementadas |
-| Avaliação final no conjunto de teste e curvas ROC | Prevista |
-| Explicabilidade com SHAP | Prevista |
+| Avaliação final no conjunto de teste e curvas ROC | Implementada |
+| Explicabilidade com SHAP | Implementada |
+
+O detalhamento do que foi feito, com as justificativas e os resultados com dados sintéticos, está em
+`docs/relatorio-do-pipeline.md`.
 
 ## 4. Pontos a definir com a orientação
 

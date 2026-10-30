@@ -5,7 +5,7 @@ leitura do projeto de pesquisa (`Projeto_sepse_07_07.pdf`) registrada em `docs/e
 
 | | |
 |---|---|
-| **Status** | Aprovado em 2026-10-29; passos 1 a 4 concluídos; passo 5 em execução |
+| **Status** | Aprovado em 2026-10-29; passos 1 a 5 concluídos |
 | **Branch** | `create-pipeline` |
 
 ## 1. Objetivo e premissa
