@@ -5,7 +5,7 @@ leitura do projeto de pesquisa (`Projeto_sepse_07_07.pdf`) registrada em `docs/e
 
 | | |
 |---|---|
-| **Status** | Aprovado em 2026-10-29; em execução |
+| **Status** | Aprovado em 2026-10-29; passos 1 a 4 concluídos; passo 5 em execução |
 | **Branch** | `create-pipeline` |
 
 ## 1. Objetivo e premissa
@@ -160,7 +160,18 @@ Cada passo é implementado, testado (suíte completa com `pytest`), revisado de 
 independente e só então commitado. Ao final, uma execução ponta a ponta com os comandos do README deve rodar sem erro e
 produzir todas as saídas.
 
-## 9. Fora do escopo
+## 9. Desvios e acréscimos durante a execução
+
+| Passo | O que mudou em relação ao plano | Motivo |
+|---|---|---|
+| 3 | `comparar_modelos` ganhou `devolver_modelos=True` (em vez de mudar o retorno) e `validacao.gravar` grava comparação, probabilidades e modelos, esvaziando antes a pasta de modelos | Não quebrar quem usa `(tabela, oof)`; não deixar modelo de rodada anterior misturado |
+| 3 | Comparação sem a pasta de modelos é erro (antes, o modo sumia da escolha em silêncio) | Revisão adversarial |
+| 4 | Explicador por permutação na escala de probabilidade para os 8 algoritmos, com `max_evals` ajustado ao número de variáveis | Mesma leitura para todos os modelos; o padrão do `shap` quebraria acima de 249 variáveis (revisão) |
+| 4 | O caso individual é o alerta de probabilidade mediana (e não o de maior probabilidade) | O de maior probabilidade tinha probabilidade 1,0 e ensinava pouco |
+| 4 | `explicacao.py` confere se o modelo carregado reproduz as métricas do teste registradas pela avaliação | Pega o caso de `validacao.py` rodado de novo sem `avaliacao.py` depois (revisão) |
+| 4 | Limitação registrada: `modelo_final.*` não leva o nome da grade; rodar a explicação com outra grade sobrescreve o modelo final | Só a grade enxuta é usada até os dados reais |
+
+## 10. Fora do escopo
 
 Definição da pergunta (alerta antes da suspeita × apoio na suspeita) e da referência temporal dos exames; conector com o
 SOUL MV; ajuste das listas de colunas para os dados reais; interruptor de colunas sinalizadas; calibração e escolha do

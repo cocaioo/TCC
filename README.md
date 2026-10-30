@@ -20,11 +20,12 @@ repositório. As métricas obtidas com eles **não têm valor científico**: ser
 | 1 | Dados de entrada: CSV sintético com 1 linha por recém-nascido (99 colunas), prevalência configurável, exames seriados e valores ausentes | `gerador_seed.py` | Pronta (sintéticos) |
 | 2 | Pré-processamento: auditoria; hemocultura, `log1p` nos exames de cauda longa, imputação pela mediana, indicador de ausência, padronização, one-hot | `preprocessamento.py` | Pronta |
 | 3 | Divisão em treino (80%) e teste (20%), estratificada pelo desfecho | `preprocessamento.py` | Pronta |
-| 4 | Treino e comparação: 8 algoritmos (RL, NB, KNN, DT, RF, GB, XGBoost, MLP), busca em grade, validação cruzada (k = 5) simples e aninhada, tratamento do desbalanceamento | `modelos.py`, `validacao.py` | Pronta; SMOTE em implementação |
-| 5 | Avaliação final no conjunto de teste e curvas ROC | | Em implementação |
-| 6 | Explicação do melhor modelo (SHAP) e modelo final salvo | | Em implementação |
+| 4 | Treino e comparação: 8 algoritmos (RL, NB, KNN, DT, RF, GB, XGBoost, MLP), busca em grade, validação cruzada (k = 5) simples e aninhada; desbalanceamento sem ajuste, com pesos de classe ou com SMOTE | `modelos.py`, `validacao.py` | Pronta |
+| 5 | Avaliação final: escolha do vencedor pela validação, teste aberto uma vez, tabela com as métricas do Quadro 5 e a especificidade, intervalo de 95% por bootstrap, curvas ROC e matriz de confusão | `avaliacao.py` | Pronta |
+| 6 | Explicação do vencedor com valores SHAP e modelo final salvo (pipeline completo e descrição em JSON) | `explicacao.py` | Pronta |
 
-O que falta implementar está descrito em `plans/plano-de-implementacao.md`.
+O plano que conduziu a implementação está em `plans/plano-de-implementacao.md`, e o relatório do que foi feito, com as
+justificativas, em `docs/relatorio-do-pipeline.md`.
 
 ## O que depende dos dados reais
 
@@ -51,9 +52,12 @@ discutidas com a orientação, e o pipeline foi preparado para absorvê-las com 
   mas podem ser consequência da sepse; o tratamento delas depende das definições em aberto.
 - O desempenho é estimado de duas formas: busca simples (nota otimista do vencedor) e validação cruzada aninhada (nota
   honesta). As probabilidades "fora da dobra" da validação aninhada alimentam as curvas ROC do treino.
-- O F1-score (limiar 0,5) é a métrica principal de seleção, conforme o projeto; acurácia, precisão, recall e AUROC também são
-  registradas.
-- Nos modelos sem suporte a `class_weight` no scikit-learn (KNN, NB e MLP), o modo de pesos de classe não aplica ajuste.
+- O F1-score (limiar 0,5) é a métrica principal de seleção, conforme o projeto; acurácia, precisão, recall, especificidade e
+  AUROC também são registradas.
+- O vencedor (algoritmo e modo de desbalanceamento) é escolhido pela validação aninhada, antes de o teste ser aberto; o teste
+  só mede.
+- Nos modelos sem suporte a `class_weight` no scikit-learn (KNN, NB e MLP), o modo de pesos de classe não aplica ajuste; o
+  SMOTE, que age nos dados, cobre os 8 modelos e roda só no treino de cada ajuste.
 
 ## Como executar
 
@@ -72,10 +76,21 @@ Requer Python 3.11 ou superior. Os comandos são para o Windows (PowerShell), a 
 # Listar o catálogo de modelos (número de combinações das grades e ajuste de desbalanceamento)
 .venv\Scripts\python.exe modelos.py --listar
 
-# 4. Busca em grade e validação cruzada dos 8 modelos, apenas com o treino (cerca de 3 min na grade enxuta)
-#    -> data/resultados/comparacao_enxuta_class_weight.csv e oof_enxuta_class_weight.csv
+# 4. Busca em grade e validação cruzada dos 8 modelos, apenas com o treino, um modo de desbalanceamento por vez
+#    (cerca de 3 a 7 min cada na grade enxuta)
+#    -> data/resultados/comparacao_enxuta_<modo>.csv, oof_enxuta_<modo>.csv e modelos_enxuta_<modo>/
+.venv\Scripts\python.exe validacao.py --grade enxuta --desbalanceamento nenhum
 .venv\Scripts\python.exe validacao.py --grade enxuta --desbalanceamento class_weight
-#    opções: --modelos RL DT (subconjunto), --n-jobs N, --desbalanceamento nenhum, --grade completa
+.venv\Scripts\python.exe validacao.py --grade enxuta --desbalanceamento smote
+#    opções: --modelos RL DT (subconjunto), --n-jobs N, --grade completa
+
+# 5. Avaliação final: escolhe o vencedor pela validação e só então abre o teste
+#    -> avaliacao_teste_enxuta.csv, vencedor_enxuta.json, roc_oof_*.png, roc_teste_*.png, confusao_vencedor_enxuta.png
+.venv\Scripts\python.exe avaliacao.py --grade enxuta
+
+# 6. SHAP do vencedor e modelo final salvo (cerca de 1 min)
+#    -> importancia_shap_enxuta.csv, shap_resumo_enxuta.png, shap_caso_enxuta.png, modelo_final.joblib e .json
+.venv\Scripts\python.exe explicacao.py --grade enxuta
 
 # Testes automáticos
 .venv\Scripts\python.exe -m pytest
@@ -90,10 +105,12 @@ dados ausentes) e `--seed` (a mesma semente gera o mesmo CSV).
 gerador_seed.py            gerador de dados sintéticos
 preprocessamento.py        auditoria, divisão treino/teste e pré-processador
 modelos.py                 catálogo dos 8 algoritmos, grades de hiperparâmetros e montagem dos pipelines
-validacao.py               busca em grade e validação cruzada (simples e aninhada)
+validacao.py               busca em grade e validação cruzada (simples e aninhada); salva os modelos finais
+avaliacao.py               avaliação final no teste, curvas ROC e matriz de confusão
+explicacao.py              valores SHAP do vencedor, modelo final salvo e função prever
 tests/                     testes automáticos (pytest), um arquivo por módulo
 plans/                     plano de implementação
-docs/                      entendimento do projeto e material de estudo (PDF e fonte LaTeX)
+docs/                      entendimento do projeto, relatório do pipeline (com figuras) e material de estudo
 data/                      dados e resultados gerados (fora do git)
 Projeto_sepse_07_07.pdf    projeto de pesquisa
 requirements.txt           dependências
