@@ -4,9 +4,12 @@ Passo 1: catálogo dos 8 algoritmos do Quadro 4 do PDF (GB, XGBoost, DT, KNN, RF
 hiperparâmetros (enxuta, para testar o pipeline; completa, para o dado real), e a montagem do `Pipeline` de cada um.
 Nada aqui ajusta modelo nem roda busca: quem ajusta é a validação cruzada (passo 2).
 
-O pré-processador é sempre o primeiro passo do pipeline ("prep"): assim, a validação cruzada o refaz do zero a cada
+Os passos do pré-processador vêm sempre primeiro no pipeline: assim, a validação cruzada os refaz do zero a cada
 dobra e nada é aprendido com a dobra de validação. Os hiperparâmetros das grades levam o prefixo `modelo__` (convenção
 do scikit-learn para "o parâmetro do passo chamado modelo").
+
+Desbalanceamento, em três modos: "nenhum"; "class_weight" (pesos de classe no estimador); "smote" (exemplos sintéticos
+da classe rara, criados só no treino de cada ajuste, por um passo do pipeline entre o pré-processador e o modelo).
 
 Os valores das grades são iniciais, a revisar; não foram ajustados ao seed.
 
@@ -19,23 +22,28 @@ import math
 import sys
 
 import numpy as np
+from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline
 from sklearn.base import clone
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
-from sklearn.pipeline import Pipeline
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.utils.class_weight import compute_sample_weight
 from xgboost import XGBClassifier
 
 MODELOS = ("RL", "NB", "KNN", "DT", "RF", "GB", "XGBoost", "MLP")
 GRADES = ("enxuta", "completa")
-DESBALANCEAMENTO = ("nenhum", "class_weight")  # "smote" entra no passo 3
+DESBALANCEAMENTO = ("nenhum", "class_weight", "smote")
 
 # O scikit-learn não tem `class_weight` nestes três: no modo "class_weight" eles rodam sem ajuste.
 SEM_PESOS = ("KNN", "NB", "MLP")
+
+# SMOTE: cada exemplo sintético é interpolado entre um positivo e um dos seus 5 vizinhos positivos; as classes ficam
+# iguais (sampling_strategy="auto"). Exige pelo menos 6 positivos em cada treino de ajuste.
+SMOTE_VIZINHOS = 5
 
 # Grades de hiperparâmetros (nomes sem o prefixo `modelo__`, que é acrescentado em `catalogo`).
 _GRADES = {
@@ -139,19 +147,30 @@ def _estimador(nome, desbalanceamento, seed):
     raise ValueError(f"modelo desconhecido: {nome!r}")
 
 
-def construir_pipeline(preprocessador, estimador):
-    """`Pipeline([("prep", pré-processador), ("modelo", estimador)])`, ainda sem ajuste.
+def construir_pipeline(preprocessador, estimador, desbalanceamento="nenhum", seed=42):
+    """Pipeline sem ajuste: passos do pré-processador, `smote` (só no modo "smote") e `modelo`.
+
+    É um `Pipeline` do imbalanced-learn, que aplica o SMOTE só no `fit` (no treino de cada ajuste) e nunca no
+    `predict`; sem o passo `smote`, ele se comporta como o do scikit-learn. Os passos do pré-processador entram
+    "achatados" (estrutural, log1p, colunas, float) porque o imbalanced-learn não aceita um `Pipeline` dentro de outro.
 
     O pré-processador é clonado: o `Pipeline` ajusta os passos no próprio objeto, então, sem o clone, os 8 modelos
     compartilhariam o mesmo pré-processador ajustado.
     """
-    return Pipeline([("prep", clone(preprocessador)), ("modelo", estimador)])
+    if desbalanceamento not in DESBALANCEAMENTO:
+        raise ValueError(f"desbalanceamento deve ser um de {DESBALANCEAMENTO}, recebi {desbalanceamento!r}")
+    passos = list(clone(preprocessador).steps)
+    if desbalanceamento == "smote":
+        passos.append(("smote", SMOTE(k_neighbors=SMOTE_VIZINHOS, random_state=seed)))
+    return Pipeline([*passos, ("modelo", estimador)])
 
 
 def catalogo(grade="enxuta", desbalanceamento="nenhum", seed=42):
     """Devolve `{nome: (estimador, grade_de_hiperparametros)}` para os 8 modelos, tudo SEM ajuste.
 
     Nenhum valor vem dos dados: os pesos de classe (GB e XGBoost) são calculados no `fit`, com o `y` de cada ajuste.
+    No modo "smote" os estimadores são os do modo "nenhum" (sem pesos), para não corrigir o desbalanceamento duas vezes;
+    o SMOTE em si entra no pipeline (`construir_pipeline`).
     A grade vem no formato do GridSearchCV, com o prefixo `modelo__` (os estimadores são o passo "modelo" do pipeline).
     """
     if grade not in GRADES:
@@ -187,6 +206,8 @@ def imprimir_catalogo():
     total_e = sum(n_combinacoes(g) for _, g in enxuta.values())
     total_c = sum(n_combinacoes(g) for _, g in completa.values())
     print(f"{'total':<9}{total_e:>8}{total_c:>10}")
+    print(f"\nmodo smote: os 8 modelos sem pesos de classe, com SMOTE ({SMOTE_VIZINHOS} vizinhos, classes igualadas) "
+          "aplicado só no treino de cada ajuste")
     # validacao.py roda a busca simples (5 dobras) e a aninhada (5 dobras externas x 5 internas); os refits dos
     # vencedores (6 por modelo) não entram na conta
     print(f"\najustes só da busca simples (5 dobras): {5 * total_e} (enxuta) e {5 * total_c} (completa)")

@@ -151,7 +151,8 @@ def comparar_modelos(X, y, ids=None, grade="enxuta", desbalanceamento="class_wei
     for nome in escolhidos:
         estimador, grade_hiper = cat[nome]
         inicio = time.time()
-        r = avaliar_modelo(construir_pipeline(prep, estimador), grade_hiper, X, y, n_dobras, seed, n_jobs)
+        pipeline = construir_pipeline(prep, estimador, desbalanceamento, seed)
+        r = avaliar_modelo(pipeline, grade_hiper, X, y, n_dobras, seed, n_jobs)
         segundos = time.time() - inicio
         media, desvio = r["aninhada"]["media"], r["aninhada"]["desvio"]
         linhas.append({

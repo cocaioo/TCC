@@ -213,3 +213,24 @@ def test_cli_grava_os_dois_arquivos(tmp_path, monkeypatch):
     oof = pd.read_csv(saida / "oof_enxuta_class_weight.csv")
     assert list(comparacao.index) == ["NB"] and 0 <= comparacao.loc["NB", "f1"] <= 1
     assert len(oof) == 300 and oof["NB"].between(0, 1).all() and oof[COL_ID].is_unique
+
+
+# --- SMOTE ----------------------------------------------------------------------------------------------------
+
+
+def test_comparar_modelos_com_smote_mantem_o_oof_alinhado(treino, monkeypatch):
+    X, y, ids = treino
+    montados = []
+    original = validacao.construir_pipeline
+
+    def espiao(prep, estimador, desbalanceamento="nenhum", seed=42):
+        pipe = original(prep, estimador, desbalanceamento, seed)
+        montados.append(pipe)
+        return pipe
+
+    monkeypatch.setattr(validacao, "construir_pipeline", espiao)
+    tabela, oof = rodar(X, y, ids, desbalanceamento="smote", seed=4)
+    assert all("smote" in pipe.named_steps and pipe["smote"].random_state == 4 for pipe in montados)
+    assert len(montados) == 2 and not oof[["RL", "DT"]].isna().any().any()
+    assert (oof[COL_ID].to_numpy() == ids.to_numpy()).all()
+    assert roc_auc_score(oof["sepse_tardia"], oof["RL"]) > 0.8  # continua informativo e alinhado

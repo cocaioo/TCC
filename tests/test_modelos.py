@@ -2,11 +2,15 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
-from sklearn.base import clone
+from imblearn.over_sampling import SMOTE
+from sklearn.base import BaseEstimator, ClassifierMixin, clone
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.exceptions import NotFittedError
-from sklearn.model_selection import ParameterGrid, train_test_split
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import ParameterGrid, StratifiedKFold, cross_val_predict, train_test_split
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.utils.validation import check_is_fitted
 from xgboost import XGBClassifier
@@ -15,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from gerador_seed import gerar_seed  # noqa: E402
 from modelos import (  # noqa: E402
-    GRADES, MODELOS, SEM_PESOS, GradientBoostingBalanceado, XGBClassifierBalanceado, catalogo, construir_pipeline,
+    DESBALANCEAMENTO, GRADES, MODELOS, SEM_PESOS, SMOTE_VIZINHOS, GradientBoostingBalanceado, XGBClassifierBalanceado, catalogo, construir_pipeline,
     n_combinacoes,
 )
 from preprocessamento import COL_ALVO, construir_preprocessador, dividir, separar_x_y  # noqa: E402
@@ -75,9 +79,9 @@ def test_cada_pipeline_ajusta_e_devolve_probabilidades(prep, amostra):
 
 
 def test_clone_dos_pipelines_funciona(prep):
-    for modo in ("nenhum", "class_weight"):
+    for modo in DESBALANCEAMENTO:
         for nome, (estimador, _) in catalogo(desbalanceamento=modo).items():
-            pipe = construir_pipeline(prep, estimador)
+            pipe = construir_pipeline(prep, estimador, modo)
             copia = clone(pipe)
             assert type(copia["modelo"]) is type(pipe["modelo"]), nome
             assert copia["modelo"].get_params() == pipe["modelo"].get_params(), nome
@@ -113,24 +117,26 @@ def test_gradient_boosting_balanceado_aplica_o_peso(prep, amostra):
     assert p_balanceado.mean() > p_simples.mean()  # a classe rara pesa mais, então as probabilidades sobem
 
 
-def test_opcoes_invalidas_levantam_erro():
+def test_opcoes_invalidas_levantam_erro(prep):
     with pytest.raises(ValueError, match="grade"):
         catalogo(grade="gigante")
     with pytest.raises(ValueError, match="desbalanceamento"):
-        catalogo(desbalanceamento="smote")  # entra só no passo 3
+        catalogo(desbalanceamento="subamostragem")
+    with pytest.raises(ValueError, match="desbalanceamento"):
+        construir_pipeline(prep, catalogo()["RL"][0], desbalanceamento="subamostragem")
 
 
-def test_preprocessador_e_o_primeiro_passo_e_nao_esta_ajustado(prep, amostra):
+def test_preprocessador_vem_primeiro_e_nao_esta_ajustado(prep, amostra):
     X, y = amostra
     cat = catalogo()
     p1 = construir_pipeline(prep, cat["RL"][0])
     p2 = construir_pipeline(prep, cat["DT"][0])
-    assert p1.steps[0][0] == "prep"
+    assert [nome for nome, _ in p1.steps] == ["estrutural", "log1p", "colunas", "float", "modelo"]
     p1.fit(X, y)
-    check_is_fitted(p1["prep"]["colunas"])  # controle: o pipeline ajustado aprendeu
+    check_is_fitted(p1["colunas"])  # controle: o pipeline ajustado aprendeu
     # Ajustar um pipeline não pode contaminar os outros nem o original. Olha-se o ColumnTransformer ("colunas"), que é
     # quem aprende (medianas, escalas): o Pipeline inteiro sempre se declara ajustado, pois o último passo não tem estado.
-    for objeto in (prep["colunas"], p2["prep"]["colunas"]):
+    for objeto in (prep["colunas"], p2["colunas"]):
         with pytest.raises(NotFittedError):
             check_is_fitted(objeto)
 
@@ -220,3 +226,85 @@ def test_xgboost_balanceado_sobe_as_probabilidades(prep, amostra):
 def test_grades_devolvidas_nao_compartilham_listas():
     catalogo()["RL"][1]["modelo__C"].append(999)
     assert 999 not in catalogo()["RL"][1]["modelo__C"]
+
+
+# --- SMOTE ----------------------------------------------------------------------------------------------------
+
+
+class Espiao(ClassifierMixin, BaseEstimator):
+    """Estimador que só registra o que recebe: as classes no `fit` e o número de linhas no `predict_proba`."""
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.contagem_fit_ = np.bincount(np.asarray(y, dtype=int))
+        self.linhas_fit_ = len(X)
+        return self
+
+    def predict_proba(self, X):
+        self.linhas_predict_ = len(X)
+        return np.tile([0.5, 0.5], (len(X), 1))
+
+
+def test_modo_smote_usa_os_estimadores_sem_pesos():
+    smote, nenhum = catalogo(desbalanceamento="smote"), catalogo(desbalanceamento="nenhum")
+    for nome in MODELOS:
+        assert type(smote[nome][0]) is type(nenhum[nome][0]), nome
+        assert smote[nome][0].get_params() == nenhum[nome][0].get_params(), nome
+
+
+def test_passo_smote_so_existe_no_modo_smote(prep):
+    estimador = catalogo()["RL"][0]
+    nomes = {modo: [n for n, _ in construir_pipeline(prep, estimador, modo).steps] for modo in DESBALANCEAMENTO}
+    assert nomes["smote"] == ["estrutural", "log1p", "colunas", "float", "smote", "modelo"]
+    assert "smote" not in nomes["nenhum"] and "smote" not in nomes["class_weight"]
+    smote = construir_pipeline(prep, estimador, "smote", seed=9)["smote"]
+    assert isinstance(smote, SMOTE) and smote.k_neighbors == SMOTE_VIZINHOS and smote.random_state == 9
+
+
+def test_os_8_pipelines_ajustam_no_modo_smote(prep, amostra):
+    X, y = amostra
+    for nome, (estimador, _) in catalogo(desbalanceamento="smote").items():
+        p = construir_pipeline(prep, estimador, "smote").fit(X, y).predict_proba(X)
+        assert p.shape == (len(X), 2) and np.isfinite(p).all() and np.allclose(p.sum(axis=1), 1.0), nome
+
+
+def test_smote_reamostra_so_no_fit(prep, amostra):
+    X, y = amostra
+    pipe = construir_pipeline(prep, Espiao(), "smote").fit(X, y)
+    espiao = pipe["modelo"]
+    negativos = int((y == 0).sum())
+    assert list(espiao.contagem_fit_) == [negativos, negativos]  # classes igualadas no treino
+    assert espiao.linhas_fit_ == 2 * negativos > len(X)
+    pipe.predict_proba(X.iloc[:37])
+    assert espiao.linhas_predict_ == 37  # a previsão recebe só as linhas pedidas, sem exemplos sintéticos
+
+
+def test_smote_dentro_do_pipeline_nao_vaza_e_o_teste_detectaria_o_vazamento(prep, amostra):
+    """Com o alvo embaralhado não há o que aprender. Com o SMOTE dentro do pipeline (só no treino de cada dobra), a
+    AUROC fora da dobra de uma árvore que decora fica perto de 0,5. Controle: reamostrar ANTES de dividir põe exemplos
+    sintéticos, vizinhos dos positivos de validação, no treino, e a AUROC sobe; isso prova que o teste pegaria o erro."""
+    X, y = amostra
+    y_ruido = pd.Series(np.random.RandomState(3).permutation(y.to_numpy()), index=y.index)
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+    arvore = DecisionTreeClassifier(random_state=0)
+
+    pipe = construir_pipeline(prep, arvore, "smote")
+    proba = cross_val_predict(pipe, X, y_ruido, cv=cv, method="predict_proba")[:, 1]
+    auroc_certo = roc_auc_score(y_ruido, proba)
+
+    Xp = clone(prep).fit_transform(X)
+    X_res, y_res = SMOTE(random_state=0).fit_resample(Xp, y_ruido)
+    proba_errado = cross_val_predict(arvore, X_res, y_res, cv=cv, method="predict_proba")[:, 1]
+    auroc_errado = roc_auc_score(y_res, proba_errado)
+
+    assert auroc_certo < 0.62
+    assert auroc_errado > auroc_certo + 0.10
+
+
+def test_smote_mesma_semente_mesmo_resultado(prep, amostra):
+    X, y = amostra
+    estimador = catalogo(desbalanceamento="smote")["RL"][0]
+    a = construir_pipeline(prep, estimador, "smote", seed=3).fit(X, y).predict_proba(X)
+    b = construir_pipeline(prep, estimador, "smote", seed=3).fit(X, y).predict_proba(X)
+    c = construir_pipeline(prep, estimador, "smote", seed=4).fit(X, y).predict_proba(X)
+    assert np.allclose(a, b) and not np.allclose(a, c)
