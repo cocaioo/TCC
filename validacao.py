@@ -136,7 +136,7 @@ def comparar_modelos(X, y, ids=None, grade="enxuta", desbalanceamento="class_wei
 
     tabela  uma linha por modelo: métricas da validação aninhada (média e desvio das dobras externas), a nota otimista
             da busca simples e os melhores hiperparâmetros da busca simples;
-    oof     DataFrame com `id_paciente`, o alvo e a probabilidade fora da dobra de cada modelo;
+    oof     DataFrame com a coluna de identificação (`COL_ID`), o alvo e a probabilidade fora da dobra de cada modelo;
     finais  `{modelo: pipeline}` com o vencedor da busca simples de cada modelo, reajustado no treino inteiro.
 
     `preprocessador` ocupa o espaço do pré-processamento no pipeline (`None` = vazio). Ele chega SEM ajuste e é

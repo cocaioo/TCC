@@ -56,11 +56,16 @@ def separar_pipeline(pipeline):
 
 
 def _transformar(prep, X):
-    """Aplica o pré-processamento e devolve um DataFrame com nomes de colunas (os nomes aparecem no SHAP)."""
+    """Aplica o pré-processamento e devolve um DataFrame com nomes de colunas (os nomes aparecem no SHAP).
+
+    Se o pré-processamento não informar os nomes, as colunas viram `x0, x1, ...`."""
     saida = prep.transform(X)
     if isinstance(saida, pd.DataFrame):
         return saida
-    nomes = prep.get_feature_names_out() if hasattr(prep, "get_feature_names_out") else None
+    try:
+        nomes = prep.get_feature_names_out()
+    except AttributeError:  # algum passo não informa os nomes das colunas que devolve
+        nomes = None
     if nomes is None or len(nomes) != saida.shape[1]:
         nomes = [f"x{i}" for i in range(saida.shape[1])]
     return pd.DataFrame(saida, columns=list(map(str, nomes)), index=X.index)

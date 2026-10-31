@@ -106,8 +106,11 @@ def bootstrap(y, previsao, proba, n=1000, seed=42):
     """Intervalo de 95% (percentis 2,5 e 97,5) de cada métrica, reamostrando os pacientes do teste com reposição.
 
     Reamostragens sem as duas classes são descartadas (a AUROC não existe nelas). Devolve `{métrica: (inf, sup)}`.
+    Se o próprio teste não tiver as duas classes, nenhuma reamostragem serviria: é erro.
     """
     y, previsao, proba = np.asarray(y), np.asarray(previsao), np.asarray(proba)
+    if len(np.unique(y)) < 2:
+        raise ValueError("o conjunto de teste precisa ter pacientes com e sem sepse para medir a AUROC e o intervalo")
     rng = np.random.default_rng(seed)
     valores = []
     while len(valores) < n:

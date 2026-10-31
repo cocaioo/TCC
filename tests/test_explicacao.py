@@ -6,6 +6,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline as PipelineSk
 from sklearn.preprocessing import StandardScaler
 
@@ -134,6 +135,24 @@ def test_shap_funciona_sem_preprocessamento(pasta):
     e = explicar(pipe, X, X_teste, seed=0)
     assert list(e.feature_names) == list(X.columns)
     assert np.allclose(e.base_values + e.values.sum(axis=1), pipe.predict_proba(X_teste)[:, 1], atol=1e-8)
+
+
+class _SemNomes(BaseEstimator, TransformerMixin):
+    """Transformador que devolve um array e não informa os nomes das colunas."""
+
+    def fit(self, X, y=None):
+        self.n_features_in_ = X.shape[1]
+        return self
+
+    def transform(self, X):
+        return np.asarray(X, dtype=float)
+
+
+def test_shap_funciona_com_preprocessamento_que_nao_informa_nomes(pasta):
+    X, y = separar_x_y(pd.read_csv(pasta / "treino.csv"))
+    pipe = construir_pipeline(_SemNomes(), catalogo()["DT"][0].set_params(max_depth=3)).fit(X, y)
+    e = explicar(pipe, X, X.iloc[:5])
+    assert list(e.feature_names) == [f"x{i}" for i in range(X.shape[1])]
 
 
 def test_sem_avaliacao_levanta_erro(tmp_path, pasta):

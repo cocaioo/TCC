@@ -107,6 +107,12 @@ def test_bootstrap_descarta_reamostragens_com_uma_classe_so():
     assert ic["auroc"] == (1.0, 1.0)
 
 
+def test_bootstrap_com_uma_classe_so_no_teste_levanta_erro():
+    y = np.zeros(50, dtype=int)
+    with pytest.raises(ValueError, match="com e sem sepse"):
+        bootstrap(y, y, np.linspace(0, 1, 50), n=10)
+
+
 def test_gravar_cria_figuras_tabela_e_resumo(resultados, avaliado):
     resumo = avaliacao.gravar(avaliado, resultados, "enxuta")
     for nome in ([f"roc_oof_enxuta_{m}.png" for m in MODOS] + [f"roc_teste_enxuta_{m}.png" for m in MODOS]
