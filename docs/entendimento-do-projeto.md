@@ -80,22 +80,23 @@ Organizadas em cinco categorias (seção 3.5, p. 38 a 40):
 
 ## 3. Situação do desenvolvimento
 
-Enquanto os dados reais dependem da aprovação no Comitê de Ética e do acesso à API, o pipeline é desenvolvido e testado
-com **dados sintéticos** que seguem a estrutura descrita na seção 2: uma linha por recém-nascido, variáveis dos Quadros 2
-e 3, exames nas duas janelas (antes da suspeita e até 24 horas depois) e valores ausentes. As métricas obtidas com esses
-dados não têm valor científico; servem para verificar o funcionamento do pipeline.
+Os dados reais dependem da aprovação no Comitê de Ética e do acesso à API. Até lá, o repositório contém só a parte do
+pipeline que **não depende dos dados**: ela recebe uma tabela já pronta e não trata nem transforma os dados. O
+pré-processamento (limpeza, ausentes, codificação e escolha das variáveis) será definido com os dados reais e com as
+respostas aos pontos da seção 4.
 
 | Requisito (seção 1.1) | Situação |
 |---|---|
 | Divisão 80/20, estratificada pelo desfecho | Implementado |
 | Os 8 algoritmos do Quadro 4 | Implementados |
 | `GridSearchCV` e validação cruzada com k = 5 | Implementados (validação simples e aninhada) |
+| Pesos de classe e reamostragem sintética (SMOTE) | Implementados |
 | Métricas do Quadro 5 | Implementadas |
-| Avaliação final no conjunto de teste e curvas ROC | Implementada |
-| Explicabilidade com SHAP | Implementada |
+| Avaliação final no conjunto de teste e curvas ROC | Implementada, nunca executada com dados reais |
+| Explicabilidade com SHAP | Implementada, nunca executada com dados reais |
+| Pré-processamento | A definir |
 
-O detalhamento do que foi feito, com as justificativas e os resultados com dados sintéticos, está em
-`docs/relatorio-do-pipeline.md`.
+O relatório técnico, em `docs/relatorio-tecnico.pdf`, descreve como cada requisito foi implementado.
 
 ## 4. Pontos a definir com a orientação
 

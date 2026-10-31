@@ -29,10 +29,11 @@ import pandas as pd
 import shap
 import sklearn
 from sklearn.pipeline import Pipeline as PipelineSk
+from sklearn.preprocessing import FunctionTransformer
 
 from avaliacao import SUPERFICIE, TINTA, carregar_modelo
 from modelos import GRADES, catalogo
-from preprocessamento import COL_ID, carregar, separar_x_y
+from divisao import COL_ID, carregar, separar_x_y
 from validacao import _metricas
 
 matplotlib.use("Agg")
@@ -48,9 +49,21 @@ N_VARIAVEIS_GRAFICO = 15
 
 
 def separar_pipeline(pipeline):
-    """`(pré-processador ajustado, modelo)`. O passo `smote` fica de fora: ele só age no treino, nunca na previsão."""
+    """`(pré-processador ajustado, modelo)`. O passo `smote` fica de fora: ele só age no treino, nunca na previsão.
+    Sem pré-processamento no pipeline, o primeiro elemento é a identidade (devolve a tabela como chega)."""
     passos = [(nome, passo) for nome, passo in pipeline.steps if nome not in ("smote", "modelo")]
-    return PipelineSk(passos), pipeline["modelo"]
+    return (PipelineSk(passos) if passos else FunctionTransformer()), pipeline["modelo"]
+
+
+def _transformar(prep, X):
+    """Aplica o pré-processamento e devolve um DataFrame com nomes de colunas (os nomes aparecem no SHAP)."""
+    saida = prep.transform(X)
+    if isinstance(saida, pd.DataFrame):
+        return saida
+    nomes = prep.get_feature_names_out() if hasattr(prep, "get_feature_names_out") else None
+    if nomes is None or len(nomes) != saida.shape[1]:
+        nomes = [f"x{i}" for i in range(saida.shape[1])]
+    return pd.DataFrame(saida, columns=list(map(str, nomes)), index=X.index)
 
 
 def explicar(pipeline, X_referencia, X_explicar, seed=42):
@@ -59,13 +72,13 @@ def explicar(pipeline, X_referencia, X_explicar, seed=42):
     Propriedade garantida pelo método: `base_values[i] + values[i].sum() == probabilidade prevista do paciente i`.
     """
     prep, modelo = separar_pipeline(pipeline)
-    referencia = prep.transform(X_referencia)
+    referencia = _transformar(prep, X_referencia)
     if len(referencia) > N_REFERENCIA:
         referencia = referencia.sample(N_REFERENCIA, random_state=seed)
     explicador = shap.explainers.Permutation(lambda M: modelo.predict_proba(M)[:, 1],
                                              shap.maskers.Independent(referencia), seed=seed)
     # O método exige pelo menos 2 x variáveis + 1 avaliações por paciente; o padrão (500) não basta acima de 249.
-    return explicador(prep.transform(X_explicar), max_evals=max(500, 2 * referencia.shape[1] + 1), silent=True)
+    return explicador(_transformar(prep, X_explicar), max_evals=max(500, 2 * referencia.shape[1] + 1), silent=True)
 
 
 def importancia_global(explicacao):
@@ -108,8 +121,8 @@ def figura_caso(explicacao, indice, titulo, caminho):
     eixo = fig.axes[0]
     eixo.set_yticks(eixo.get_yticks(), [t.get_text().replace("other features", "outras variáveis")
                                         for t in eixo.get_yticklabels()])
-    fig.text(0.02, 0.01, "Valores à esquerda: variáveis já pré-processadas (exames contínuos em desvios-padrão em "
-             "relação à média do treino).", fontsize=8, color=TINTA)
+    fig.text(0.02, 0.01, "Valores à esquerda: variáveis como o modelo as recebe, depois do pré-processamento.",
+             fontsize=8, color=TINTA)
     _finalizar(titulo, caminho, margem_direita=0.9)
 
 
@@ -157,7 +170,6 @@ def salvar_modelo_final(pipeline, resumo_vencedor, colunas, resultados_dir):
         "metricas_teste_ic95": resumo_vencedor["teste_ic95"],
         "data": date.today().isoformat(),
         "versoes": {"python": sys.version.split()[0], "scikit-learn": sklearn.__version__},
-        "dados": "sintéticos (gerador_seed.py): métricas sem valor científico",
     }
     joblib.dump(pipeline, resultados_dir / "modelo_final.joblib")
     (resultados_dir / "modelo_final.json").write_text(json.dumps(metadados, indent=2, ensure_ascii=False),
@@ -169,7 +181,7 @@ def prever(df, resultados_dir=Path("data/resultados")):
     """Probabilidade de sepse tardia de cada paciente de `df` (uma linha por recém-nascido), com o modelo final.
 
     Confere as colunas contra `modelo_final.json`: faltar coluna é erro; coluna a mais é ignorada com aviso. Devolve uma
-    Series indexada por `id_paciente` (se existir) ou pelo índice de `df`.
+    Series indexada pela coluna de identificação (se existir) ou pelo índice de `df`.
     """
     resultados_dir = Path(resultados_dir)
     metadados = json.loads((resultados_dir / "modelo_final.json").read_text(encoding="utf-8"))
@@ -239,7 +251,6 @@ def main():
     args = parser.parse_args()
 
     sys.stdout.reconfigure(encoding="utf-8")  # console do Windows usa cp1252 e quebra os acentos
-    warnings.filterwarnings("ignore", message="Found unknown categories", category=UserWarning)
     r = executar(args.resultados_dir, args.treino, args.teste, args.grade, args.seed)
     print(f"modelo explicado: {r['resumo']['modelo']} ({r['resumo']['modo']})\n")
     print(f"variáveis de maior importância (média do |SHAP|, em pontos de probabilidade), top {N_VARIAVEIS_GRAFICO}:")

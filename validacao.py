@@ -10,6 +10,9 @@ Para cada modelo do catálogo (`modelos.py`), duas estimativas de desempenho:
 
 O conjunto de teste NÃO é usado aqui (nem sequer é lido). Os 8 modelos recebem as mesmas dobras externas.
 
+Enquanto o pré-processamento não for definido (depende dos dados reais), o espaço dele no pipeline fica vazio e a tabela
+de treino precisa chegar já numérica e sem ausentes.
+
 Uso:
     python validacao.py --grade enxuta --desbalanceamento class_weight
 """
@@ -17,7 +20,6 @@ Uso:
 import argparse
 import sys
 import time
-import warnings
 from pathlib import Path
 
 import joblib
@@ -29,7 +31,7 @@ from sklearn.metrics import (accuracy_score, f1_score, make_scorer, precision_sc
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 
 from modelos import DESBALANCEAMENTO, GRADES, MODELOS, catalogo, construir_pipeline
-from preprocessamento import COL_ALVO, COL_ID, carregar, construir_preprocessador, separar_x_y
+from divisao import COL_ALVO, COL_ID, carregar, separar_x_y
 
 N_DOBRAS = 5  # k-fold com k = 5 (p. 46 do PDF), na busca e na validação externa
 
@@ -68,7 +70,7 @@ def _preparar(X, y, n_dobras):
     isso o mínimo de `n_dobras**2` exemplos por classe é exigido aqui: dá pelo menos alguns por dobra da busca interna.
     """
     if not isinstance(X, pd.DataFrame):
-        raise TypeError("X deve ser um DataFrame (o pré-processador usa os nomes das colunas)")
+        raise TypeError("X deve ser um DataFrame (as variáveis são identificadas pelo nome)")
     y = pd.Series(np.asarray(y)).reset_index(drop=True)
     if len(y) != len(X):
         raise ValueError(f"X e y têm números de linhas diferentes ({len(X)} e {len(y)})")
@@ -127,7 +129,8 @@ def avaliar_modelo(pipeline, grade, X, y, n_dobras=N_DOBRAS, seed=42, n_jobs=1):
 
 
 def comparar_modelos(X, y, ids=None, grade="enxuta", desbalanceamento="class_weight", modelos=None,
-                     n_dobras=N_DOBRAS, seed=42, n_jobs=-1, mini_catalogo=None, verbose=True, devolver_modelos=False):
+                     n_dobras=N_DOBRAS, seed=42, n_jobs=-1, mini_catalogo=None, verbose=True, devolver_modelos=False,
+                     preprocessador=None):
     """Avalia os modelos pedidos (padrão: os 8) e devolve `(tabela, oof)`, ou `(tabela, oof, finais)` com
     `devolver_modelos=True`.
 
@@ -136,9 +139,8 @@ def comparar_modelos(X, y, ids=None, grade="enxuta", desbalanceamento="class_wei
     oof     DataFrame com `id_paciente`, o alvo e a probabilidade fora da dobra de cada modelo;
     finais  `{modelo: pipeline}` com o vencedor da busca simples de cada modelo, reajustado no treino inteiro.
 
-    O pré-processador é construído UMA vez, mas só os NOMES das colunas vêm daqui: tudo o que depende de valores (colunas
-    binárias, exames com indicador de ausência, medianas, escalas, pesos de classe) é decidido de novo no `fit` de cada
-    dobra.
+    `preprocessador` ocupa o espaço do pré-processamento no pipeline (`None` = vazio). Ele chega SEM ajuste e é
+    clonado e ajustado de novo em cada dobra, assim como os pesos de classe: nada é aprendido com a dobra de validação.
     """
     X, y = _preparar(X, y, n_dobras)
     if ids is not None and len(ids) != len(y):
@@ -151,13 +153,12 @@ def comparar_modelos(X, y, ids=None, grade="enxuta", desbalanceamento="class_wei
     if desconhecidos:
         raise ValueError(f"modelos desconhecidos: {desconhecidos}; os disponíveis são {list(cat)}")
 
-    prep = construir_preprocessador(X)
     linhas, finais = [], {}
     oof = pd.DataFrame({COL_ID: np.asarray(ids) if ids is not None else np.arange(len(y)), COL_ALVO: y.to_numpy()})
     for nome in escolhidos:
         estimador, grade_hiper = cat[nome]
         inicio = time.time()
-        pipeline = construir_pipeline(prep, estimador, desbalanceamento, seed)
+        pipeline = construir_pipeline(preprocessador, estimador, desbalanceamento, seed)
         r = avaliar_modelo(pipeline, grade_hiper, X, y, n_dobras, seed, n_jobs)
         segundos = time.time() - inicio
         media, desvio = r["aninhada"]["media"], r["aninhada"]["desvio"]
@@ -217,10 +218,6 @@ def main():
     args = parser.parse_args()
 
     sys.stdout.reconfigure(encoding="utf-8")  # console do Windows usa cp1252 e quebra os acentos
-    # Categoria rara que cai só na dobra de validação vira "zeros" no one-hot (handle_unknown="ignore", por desenho) e o
-    # scikit-learn avisa a cada dobra. O filtro vale no processo principal e é repassado aos workers pelo scikit-learn
-    # (uma variável PYTHONWARNINGS definida aqui não teria efeito: o interpretador já foi iniciado).
-    warnings.filterwarnings("ignore", message="Found unknown categories", category=UserWarning)
     df = carregar(args.treino)
     X, y = separar_x_y(df)
     print(f"treino: {len(df)} pacientes, {int(y.sum())} com sepse ({y.mean():.1%}); grade {args.grade}; "

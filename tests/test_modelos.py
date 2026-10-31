@@ -10,6 +10,8 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.exceptions import NotFittedError
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import ParameterGrid, StratifiedKFold, cross_val_predict, train_test_split
+from sklearn.pipeline import Pipeline as PipelineSk
+from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.utils.validation import check_is_fitted
@@ -17,19 +19,19 @@ from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from gerador_seed import gerar_seed  # noqa: E402
+from dados_genericos import tabela_generica  # noqa: E402
 from modelos import (  # noqa: E402
     DESBALANCEAMENTO, GRADES, MODELOS, SEM_PESOS, SMOTE_VIZINHOS, GradientBoostingBalanceado, XGBClassifierBalanceado, catalogo, construir_pipeline,
     n_combinacoes,
 )
-from preprocessamento import COL_ALVO, construir_preprocessador, dividir, separar_x_y  # noqa: E402
+from divisao import COL_ALVO, dividir, separar_x_y  # noqa: E402
 
 PREVALENCIA = 0.20
 
 
 @pytest.fixture(scope="module")
 def dados():
-    treino, _ = dividir(gerar_seed(n=1000, prevalencia=PREVALENCIA, seed=11))
+    treino, _ = dividir(tabela_generica(n=1000, prevalencia=PREVALENCIA, seed=11))
     X, y = separar_x_y(treino)
     return X, y
 
@@ -43,8 +45,9 @@ def amostra(dados):
 
 
 @pytest.fixture(scope="module")
-def prep(dados):
-    return construir_preprocessador(dados[0])
+def prep():
+    """Um pré-processamento qualquer (padronização), só para ocupar o espaço do pipeline nos testes."""
+    return PipelineSk([("escalar", StandardScaler())]).set_output(transform="pandas")
 
 
 def test_catalogo_tem_os_8_modelos_nas_duas_grades():
@@ -131,14 +134,24 @@ def test_preprocessador_vem_primeiro_e_nao_esta_ajustado(prep, amostra):
     cat = catalogo()
     p1 = construir_pipeline(prep, cat["RL"][0])
     p2 = construir_pipeline(prep, cat["DT"][0])
-    assert [nome for nome, _ in p1.steps] == ["estrutural", "log1p", "colunas", "float", "modelo"]
+    assert [nome for nome, _ in p1.steps] == ["escalar", "modelo"]
     p1.fit(X, y)
-    check_is_fitted(p1["colunas"])  # controle: o pipeline ajustado aprendeu
-    # Ajustar um pipeline não pode contaminar os outros nem o original. Olha-se o ColumnTransformer ("colunas"), que é
-    # quem aprende (medianas, escalas): o Pipeline inteiro sempre se declara ajustado, pois o último passo não tem estado.
-    for objeto in (prep["colunas"], p2["colunas"]):
+    check_is_fitted(p1["escalar"])  # controle: o pipeline ajustado aprendeu
+    # Ajustar um pipeline não pode contaminar os outros nem o original.
+    for objeto in (prep["escalar"], p2["escalar"]):
         with pytest.raises(NotFittedError):
             check_is_fitted(objeto)
+
+
+def test_espaco_do_preprocessamento_aceita_vazio_ou_um_transformador(amostra):
+    X, y = amostra
+    estimador = catalogo()["RL"][0]
+    vazio = construir_pipeline(None, estimador)
+    assert [nome for nome, _ in vazio.steps] == ["modelo"]
+    assert np.isfinite(vazio.fit(X, y).predict_proba(X)).all()
+    unico = construir_pipeline(StandardScaler(), estimador, "smote")
+    assert [nome for nome, _ in unico.steps] == ["preprocessamento", "smote", "modelo"]
+    assert np.isfinite(unico.fit(X, y).predict_proba(X)).all()
 
 
 def test_mesma_semente_mesmas_probabilidades(prep, amostra):
@@ -255,7 +268,7 @@ def test_modo_smote_usa_os_estimadores_sem_pesos():
 def test_passo_smote_so_existe_no_modo_smote(prep):
     estimador = catalogo()["RL"][0]
     nomes = {modo: [n for n, _ in construir_pipeline(prep, estimador, modo).steps] for modo in DESBALANCEAMENTO}
-    assert nomes["smote"] == ["estrutural", "log1p", "colunas", "float", "smote", "modelo"]
+    assert nomes["smote"] == ["escalar", "smote", "modelo"]
     assert "smote" not in nomes["nenhum"] and "smote" not in nomes["class_weight"]
     smote = construir_pipeline(prep, estimador, "smote", seed=9)["smote"]
     assert isinstance(smote, SMOTE) and smote.k_neighbors == SMOTE_VIZINHOS and smote.random_state == 9

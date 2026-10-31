@@ -20,7 +20,6 @@ Uso:
 import argparse
 import json
 import sys
-import warnings
 from pathlib import Path
 
 import joblib
@@ -30,7 +29,7 @@ import pandas as pd
 from sklearn.metrics import confusion_matrix, roc_auc_score, roc_curve
 
 from modelos import DESBALANCEAMENTO, GRADES, MODELOS
-from preprocessamento import COL_ALVO, carregar, separar_x_y
+from divisao import COL_ALVO, carregar, separar_x_y
 from validacao import _metricas
 
 matplotlib.use("Agg")  # só grava arquivos; não abre janela
@@ -274,7 +273,6 @@ def main():
     args = parser.parse_args()
 
     sys.stdout.reconfigure(encoding="utf-8")  # console do Windows usa cp1252 e quebra os acentos
-    warnings.filterwarnings("ignore", message="Found unknown categories", category=UserWarning)
     r = avaliar(args.resultados_dir, args.teste, args.grade, args.n_bootstrap, args.seed)
     imprimir(r)
     gravar(r, args.resultados_dir, args.grade)

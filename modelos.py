@@ -4,14 +4,15 @@ Passo 1: catálogo dos 8 algoritmos do Quadro 4 do PDF (GB, XGBoost, DT, KNN, RF
 hiperparâmetros (enxuta, para testar o pipeline; completa, para o dado real), e a montagem do `Pipeline` de cada um.
 Nada aqui ajusta modelo nem roda busca: quem ajusta é a validação cruzada (passo 2).
 
-Os passos do pré-processador vêm sempre primeiro no pipeline: assim, a validação cruzada os refaz do zero a cada
-dobra e nada é aprendido com a dobra de validação. Os hiperparâmetros das grades levam o prefixo `modelo__` (convenção
-do scikit-learn para "o parâmetro do passo chamado modelo").
+O pipeline tem um espaço para o pré-processamento, sempre antes do modelo: assim, a validação cruzada o refaz do
+zero a cada dobra e nada é aprendido com a dobra de validação. O pré-processamento depende dos dados reais e ainda não
+existe; até lá, o espaço fica vazio e o pipeline espera uma tabela já numérica e sem ausentes. Os hiperparâmetros das
+grades levam o prefixo `modelo__` (convenção do scikit-learn para "o parâmetro do passo chamado modelo").
 
 Desbalanceamento, em três modos: "nenhum"; "class_weight" (pesos de classe no estimador); "smote" (exemplos sintéticos
 da classe rara, criados só no treino de cada ajuste, por um passo do pipeline entre o pré-processador e o modelo).
 
-Os valores das grades são iniciais, a revisar; não foram ajustados ao seed.
+Os valores das grades são iniciais, a revisar com os dados reais.
 
 Uso:
     python modelos.py --listar
@@ -24,6 +25,7 @@ import sys
 import numpy as np
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline
+from sklearn.pipeline import Pipeline as PipelineSk
 from sklearn.base import clone
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -147,19 +149,31 @@ def _estimador(nome, desbalanceamento, seed):
     raise ValueError(f"modelo desconhecido: {nome!r}")
 
 
-def construir_pipeline(preprocessador, estimador, desbalanceamento="nenhum", seed=42):
-    """Pipeline sem ajuste: passos do pré-processador, `smote` (só no modo "smote") e `modelo`.
+def _passos_do_preprocessador(preprocessador):
+    """Passos do pré-processamento, clonados: nenhum (`None`), os de um `Pipeline` ou um único transformador."""
+    if preprocessador is None:
+        return []
+    copia = clone(preprocessador)
+    if isinstance(copia, (Pipeline, PipelineSk)):
+        return list(copia.steps)
+    return [("preprocessamento", copia)]
 
-    É um `Pipeline` do imbalanced-learn, que aplica o SMOTE só no `fit` (no treino de cada ajuste) e nunca no
-    `predict`; sem o passo `smote`, ele se comporta como o do scikit-learn. Os passos do pré-processador entram
-    "achatados" (estrutural, log1p, colunas, float) porque o imbalanced-learn não aceita um `Pipeline` dentro de outro.
+
+def construir_pipeline(preprocessador, estimador, desbalanceamento="nenhum", seed=42):
+    """Pipeline sem ajuste: passos do pré-processamento (se houver), `smote` (só no modo "smote") e `modelo`.
+
+    `preprocessador` pode ser `None` (espaço vazio, enquanto o pré-processamento não for definido), um transformador do
+    scikit-learn ou um `Pipeline`. É um `Pipeline` do imbalanced-learn, que aplica o SMOTE só no `fit` (no treino de
+    cada ajuste) e nunca no `predict`; sem o passo `smote`, ele se comporta como o do scikit-learn. Os passos de um
+    `Pipeline` de pré-processamento entram "achatados" porque o imbalanced-learn não aceita um `Pipeline` dentro de
+    outro.
 
     O pré-processador é clonado: o `Pipeline` ajusta os passos no próprio objeto, então, sem o clone, os 8 modelos
     compartilhariam o mesmo pré-processador ajustado.
     """
     if desbalanceamento not in DESBALANCEAMENTO:
         raise ValueError(f"desbalanceamento deve ser um de {DESBALANCEAMENTO}, recebi {desbalanceamento!r}")
-    passos = list(clone(preprocessador).steps)
+    passos = _passos_do_preprocessador(preprocessador)
     if desbalanceamento == "smote":
         passos.append(("smote", SMOTE(k_neighbors=SMOTE_VIZINHOS, random_state=seed)))
     return Pipeline([*passos, ("modelo", estimador)])

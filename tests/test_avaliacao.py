@@ -12,11 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import avaliacao  # noqa: E402
 from avaliacao import METRICAS_TESTE, bootstrap, escolher_vencedor, modos_disponiveis  # noqa: E402
-from gerador_seed import gerar_seed  # noqa: E402
-from preprocessamento import COL_ID, dividir, separar_x_y  # noqa: E402
+from dados_genericos import tabela_generica  # noqa: E402
+from divisao import COL_ID, dividir, separar_x_y  # noqa: E402
 from validacao import _metricas, comparar_modelos, gravar  # noqa: E402
-
-pytestmark = pytest.mark.filterwarnings("ignore:Found unknown categories:UserWarning")
 
 MODOS = ("nenhum", "smote")
 
@@ -32,7 +30,7 @@ def mini_catalogo():
 def resultados(tmp_path_factory):
     """Pasta com o que `validacao.py` grava (dois modos, dois modelos) e o CSV do teste, como numa execução real."""
     pasta = tmp_path_factory.mktemp("resultados")
-    treino, teste = dividir(gerar_seed(n=500, prevalencia=0.20, seed=21))
+    treino, teste = dividir(tabela_generica(n=500, prevalencia=0.20, seed=21))
     teste.to_csv(pasta / "teste.csv", index=False)
     X, y = separar_x_y(treino)
     for modo in MODOS:

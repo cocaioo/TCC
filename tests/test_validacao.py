@@ -8,20 +8,20 @@ import pytest
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
+from sklearn.exceptions import NotFittedError
+from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.utils.validation import check_is_fitted
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import validacao  # noqa: E402
-from gerador_seed import gerar_seed  # noqa: E402
+from dados_genericos import tabela_generica  # noqa: E402
 from modelos import construir_pipeline  # noqa: E402
-from preprocessamento import COL_ID, construir_preprocessador, dividir, separar_x_y  # noqa: E402
+from divisao import COL_ALVO, COL_ID, dividir, separar_x_y  # noqa: E402
 from validacao import (  # noqa: E402
     METRICAS, _busca, _escolher_melhor, _metricas, _preparar, avaliar_modelo, comparar_modelos, gravar,
 )
-
-# Categoria rara que cai só na dobra de validação vira "zeros" no one-hot (por desenho); o aviso inunda a saída dos testes.
-pytestmark = pytest.mark.filterwarnings("ignore:Found unknown categories:UserWarning")
 
 
 def mini_catalogo():
@@ -33,7 +33,7 @@ def mini_catalogo():
 
 @pytest.fixture(scope="module")
 def treino():
-    df, _ = dividir(gerar_seed(n=1000, prevalencia=0.20, seed=11))
+    df, _ = dividir(tabela_generica(n=1000, prevalencia=0.20, seed=11))
     X, y = separar_x_y(df)
     X_s, _, y_s, _, id_s, _ = train_test_split(X, y, df[COL_ID], train_size=300, stratify=y, random_state=0)
     return X_s, y_s, id_s
@@ -139,7 +139,7 @@ def test_linha_da_tabela_bate_com_as_dobras_e_a_busca(treino):
     tabela, _ = comparar_modelos(X, y, ids, mini_catalogo=cat, n_dobras=3, n_jobs=1, verbose=False)
     linha = tabela.loc["RL"]
 
-    prep = construir_preprocessador(X)
+    prep = None  # sem pré-processamento, como na comparação acima
     r = avaliar_modelo(construir_pipeline(prep, LogisticRegression(max_iter=500)), grade, X, y, n_dobras=3)
     por_dobra = r["aninhada"]["por_dobra"]
     assert len(por_dobra) == 3  # número de dobras externas = n_dobras
@@ -206,7 +206,7 @@ def test_preparar_aceita_y_em_array_e_exige_dataframe(treino):
 
 
 def test_cli_grava_os_dois_arquivos(tmp_path, monkeypatch):
-    gerar_seed(n=300, prevalencia=0.20, seed=21).to_csv(tmp_path / "treino.csv", index=False)
+    tabela_generica(n=300, prevalencia=0.20, seed=21).to_csv(tmp_path / "treino.csv", index=False)
     saida = tmp_path / "resultados"
     monkeypatch.setattr(sys, "argv", ["validacao.py", "--treino", str(tmp_path / "treino.csv"), "--saida-dir",
                                       str(saida), "--modelos", "NB", "--n-jobs", "1"])
@@ -264,6 +264,23 @@ def test_gravar_apaga_modelos_de_rodada_anterior(treino, tmp_path):
     (pasta / "DT.joblib").write_text("modelo velho")
     gravar(tabela, oof, finais, tmp_path, "enxuta", "nenhum")
     assert sorted(p.name for p in pasta.iterdir()) == ["RL.joblib"]
+
+
+def test_preprocessador_e_repassado_a_cada_pipeline(treino, monkeypatch):
+    X, y, ids = treino
+    recebidos = []
+    original = validacao.construir_pipeline
+
+    def espiao(prep, estimador, desbalanceamento="nenhum", seed=42):
+        recebidos.append(prep)
+        return original(prep, estimador, desbalanceamento, seed)
+
+    monkeypatch.setattr(validacao, "construir_pipeline", espiao)
+    padronizar = StandardScaler()
+    rodar(X, y, ids, preprocessador=padronizar)
+    assert recebidos == [padronizar, padronizar]  # um por modelo do mini-catálogo
+    with pytest.raises(NotFittedError):
+        check_is_fitted(padronizar)  # o original nunca é ajustado: cada pipeline usa um clone
 
 
 def test_especificidade_entra_na_tabela(treino):
