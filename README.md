@@ -17,12 +17,17 @@ repositório. As métricas obtidas com eles **não têm valor científico**: ser
 
 | # | Estação | Módulo | Estado |
 |---|---|---|---|
-| 1 | Dados de entrada: CSV sintético com 1 linha por recém-nascido (99 colunas), prevalência configurável, exames seriados e valores ausentes | `gerador_seed.py` | Pronta (sintéticos) |
-| 2 | Pré-processamento: auditoria; hemocultura, `log1p` nos exames de cauda longa, imputação pela mediana, indicador de ausência, padronização, one-hot | `preprocessamento.py` | Pronta |
+| 1 | Dados de entrada: CSV sintético com 1 linha por recém-nascido (99 colunas), prevalência configurável, exames seriados e valores ausentes | `gerador_seed.py` | Apoio provisório (dados sintéticos) |
+| 2 | Pré-processamento: auditoria; hemocultura, `log1p` nos exames de cauda longa, imputação pela mediana, indicador de ausência, padronização, one-hot | `preprocessamento.py` | Provisória: só o necessário para os modelos rodarem |
 | 3 | Divisão em treino (80%) e teste (20%), estratificada pelo desfecho | `preprocessamento.py` | Pronta |
 | 4 | Treino e comparação: 8 algoritmos (RL, NB, KNN, DT, RF, GB, XGBoost, MLP), busca em grade, validação cruzada (k = 5) simples e aninhada; desbalanceamento sem ajuste, com pesos de classe ou com SMOTE | `modelos.py`, `validacao.py` | Pronta |
 | 5 | Avaliação final: escolha do vencedor pela validação, teste aberto uma vez, tabela com as métricas do Quadro 5 e a especificidade, intervalo de 95% por bootstrap, curvas ROC e matriz de confusão | `avaliacao.py` | Pronta |
 | 6 | Explicação do vencedor com valores SHAP e modelo final salvo (pipeline completo e descrição em JSON) | `explicacao.py` | Pronta |
+
+Escopo combinado: o trabalho concentra-se na parte que não altera os dados (estações 3 a 6: divisão estratificada,
+validação cruzada estratificada, catálogo de algoritmos, grades de hiperparâmetros, tratamento do desbalanceamento,
+avaliação e explicação). O gerador sintético e o pré-processador são andaimes provisórios para exercitar essa parte; o
+tratamento definitivo dos dados será decidido com os dados reais e com a orientação.
 
 O plano que conduziu a implementação está em `plans/plano-de-implementacao.md`, e o relatório do que foi feito, com as
 justificativas, em `docs/relatorio-do-pipeline.md`.

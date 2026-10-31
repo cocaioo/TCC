@@ -15,6 +15,11 @@ numeradas no PDF.
 > **não têm valor científico**. Eles servem para mostrar que o pipeline funciona de ponta a ponta e que as proteções
 > metodológicas estão ativas.
 
+> **Escopo (nota de 2026-10-31).** O escopo combinado é a parte do pipeline que não altera os dados: divisão e
+> validação cruzada estratificadas, catálogo de algoritmos, hiperparâmetros, desbalanceamento, avaliação e explicação.
+> O gerador sintético (seção 3.1) e o pré-processador (seção 3.3) são provisórios e servem só para exercitar essa parte.
+> O relatório formal atualizado está em `docs/relatorio-tecnico.pdf`.
+
 ## 1. Objetivo do trabalho
 
 O estudo tem como objetivo desenvolver e avaliar algoritmos de inteligência artificial para a predição de sepse tardia

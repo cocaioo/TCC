@@ -36,7 +36,7 @@ COL_ALVO = "sepse_tardia"
 COL_EXCLUIDA = "dias_ate_dx_sepse"
 
 # Preditoras previstas no PDF cujo valor pode ser CONSEQUÊNCIA da sepse (totais da internação e resultado da
-# hemocultura). Ficam por padrão; o interruptor `excluir_sinalizadas` (etapa de modelos) permitirá compará-las com e sem.
+# hemocultura). Ficam por padrão; a comparação com e sem elas saiu do escopo até a definição da pergunta do modelo (plano, S5).
 COLS_SINALIZADAS = [
     "dias_utin", "vm_dias", "cvc_dias", "npt_dias",
     "hemocultura_resultado", "hemocultura_agente", "perfil_sensibilidade",

@@ -1,0 +1,238 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[brazilian]{babel}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage[colorlinks=true,linkcolor=azul,urlcolor=azul]{hyperref}
+
+\definecolor{azul}{RGB}{31,78,121}
+\titleformat{\section}{\large\bfseries\color{azul}}{\thesection}{0.8em}{}
+
+\setlist{itemsep=2pt,topsep=4pt}
+\setlength{\emergencystretch}{3em}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcommand{\cod}[1]{\texttt{#1}}
+\renewcommand{\arraystretch}{1.25}
+
+\hypersetup{pdftitle={Relatório técnico: apoio computacional ao projeto de tese},
+  pdfauthor={Caio Victor Ferreira do Nascimento}}
+
+\begin{document}
+
+\begin{titlepage}
+\centering
+{\large UNIVERSIDADE FEDERAL DO PIAUÍ\\Departamento de Computação\par}
+\vspace{4cm}
+{\LARGE\bfseries\color{azul} Relatório Técnico\par}
+\vspace{0.8cm}
+{\large Trabalho de apoio computacional ao projeto de tese\\[0.3cm]
+\emph{Desenvolvimento de modelos de inteligência artificial para predição de sepse tardia em Unidade de Terapia
+Intensiva Neonatal}\par}
+\vspace{2.5cm}
+\begin{tabular}{rl}
+Aluno: & Caio Victor Ferreira do Nascimento\\
+Professor: & Prof. Dr. Vinícius Ponte Machado\\
+\end{tabular}
+\vfill
+{\large Teresina, 31 de outubro de 2026\par}
+\end{titlepage}
+
+% ------------------------------------------------------------------
+\section{Objetivo}
+
+Este relatório resume o que foi desenvolvido até agora no pipeline de aprendizado de máquina do projeto de tese. Ele
+lista os requisitos que o projeto define, mostra como cada um foi implementado e indica o que ainda falta. As páginas
+citadas são as do documento do projeto.
+
+O trabalho concentrou-se na parte do pipeline que \textbf{não altera os dados}: algoritmos, hiperparâmetros,
+tratamento do desbalanceamento e validação cruzada. O código está no repositório, no ramo \cod{create-pipeline}, e tem
+107 testes automáticos, todos aprovados.
+
+% ------------------------------------------------------------------
+\section{Requisitos implementados}
+
+Cada requisito abaixo vem da metodologia do projeto. Para cada um, descreve-se como foi implementado e quais arquivos
+foram criados ou gerados. Os arquivos de código ficam na raiz do repositório. Os resultados de cada execução são
+gravados na pasta \cod{data/resultados/}, que não vai para o controle de versão porque pode ser regenerada a qualquer
+momento. A pasta \cod{tests/} tem um arquivo de testes automáticos para cada módulo.
+
+\subsection{Oito algoritmos de classificação}
+
+O Quadro~4 (p.~44) lista oito algoritmos: Regressão Logística, Naive Bayes, K-vizinhos mais próximos (KNN), Árvore
+de Decisão, Random Forest, Gradient Boosting, XGBoost e rede neural MLP. Todos foram implementados no arquivo
+\cod{modelos.py}, que funciona como um catálogo. Para cada algoritmo, ele define o estimador, os parâmetros fixos, como
+a semente aleatória, e as grades de hiperparâmetros. Sete algoritmos vêm da biblioteca scikit-learn, e o XGBoost vem da
+biblioteca xgboost.
+
+Cada algoritmo é montado em um \emph{pipeline}, uma sequência de passos em que o pré-processamento vem sempre antes do
+modelo. Com isso, a cada rodada da validação cruzada, o pré-processamento é refeito só com os dados de treino daquela
+rodada. O comando \cod{python modelos.py -{}-listar} imprime o catálogo. O arquivo \cod{tests/test\_modelos.py}
+verifica, entre outros pontos, que os oito pipelines treinam e devolvem probabilidades válidas.
+
+\subsection{Busca de hiperparâmetros}
+
+O projeto prevê a busca de hiperparâmetros com \cod{GridSearchCV} (p.~45). Em \cod{modelos.py}, cada algoritmo tem
+duas grades. A grade enxuta, com 59 combinações no total, serve para testar o pipeline em poucos minutos. A grade
+completa, com 325 combinações, está prevista para os dados reais. Na Random Forest, por exemplo, variam o número de
+árvores, a profundidade máxima, o tamanho mínimo da folha e o número de variáveis por divisão.
+
+O scikit-learn só acusa um valor inválido no momento do treino, o que poderia interromper uma busca longa no meio.
+Por isso, os testes treinam cada algoritmo com a primeira, a do meio e a última combinação de cada grade e conferem que
+todo hiperparâmetro existe no estimador. Os valores das grades são iniciais e serão revistos com os dados reais.
+
+\subsection{Divisão entre treino e teste}
+
+O projeto define 80\% dos dados para treino e 20\% para teste (p.~45). A divisão é feita pela função \cod{dividir}, no
+arquivo \cod{preprocessamento.py}, de forma estratificada: as duas partes mantêm a mesma proporção de sepse. Ela gera
+os arquivos \cod{data/treino.csv} e \cod{data/teste.csv}. Com os dados sintéticos, o treino ficou com 800 pacientes,
+160 deles com sepse, e o teste com 200 pacientes, 40 com sepse. O arquivo de teste só é lido na avaliação final.
+
+\subsection{Validação cruzada com cinco dobras}
+
+O projeto prevê validação cruzada com $k = 5$ (p.~45). Ela foi implementada no arquivo \cod{validacao.py}, com
+\cod{StratifiedKFold}, que mantém a proporção de sepse em cada dobra. O arquivo produz duas estimativas para cada
+algoritmo. A primeira é a da própria busca em grade, que é otimista, porque a melhor combinação foi escolhida
+justamente por ter ido bem naquelas dobras. A segunda é a validação aninhada: em cada uma de cinco rodadas, a busca
+inteira roda em quatro dobras, e o modelo escolhido é medido na quinta, que ele nunca viu. A comparação entre
+algoritmos usa a segunda.
+
+Para cada modo de desbalanceamento, o \cod{validacao.py} grava três saídas na pasta de resultados:
+\begin{itemize}
+\item \cod{comparacao\_<grade>\_<modo>.csv}: uma linha por algoritmo, com as métricas da validação aninhada, a nota da
+busca simples, os melhores hiperparâmetros e o tempo de execução;
+\item \cod{oof\_<grade>\_<modo>.csv}: para cada paciente do treino, a probabilidade de sepse prevista por um modelo que
+não o viu, usada nas curvas ROC;
+\item pasta \cod{modelos\_<grade>\_<modo>/}: um arquivo \cod{.joblib} por algoritmo, com o modelo de melhores
+hiperparâmetros treinado no treino inteiro.
+\end{itemize}
+
+O arquivo também exige um mínimo de 25 casos de cada classe, porque, com poucos casos de sepse, um F1 igual a zero
+pareceria um resultado normal. Os testes em \cod{tests/test\_validacao.py} mostram, por exemplo, que com o desfecho
+embaralhado as previsões não acertam mais que o acaso.
+
+\subsection{Tratamento do desbalanceamento}
+
+O projeto prevê avaliar reamostragem sintética e ajuste de pesos de classe (p.~46; seção~2.2.1, p.~29). O arquivo
+\cod{modelos.py} oferece três modos, escolhidos na execução do \cod{validacao.py}: sem ajuste, pesos de classe e
+SMOTE.
+
+No modo de pesos de classe, os erros nos casos de sepse pesam mais no treino. Regressão Logística, Árvore de Decisão e
+Random Forest têm esse recurso pronto no scikit-learn. O Gradient Boosting não tem, e por isso foi criada a classe
+\cod{GradientBoostingBalanceado}, que calcula os pesos a cada treino. O XGBoost tem o parâmetro
+\cod{scale\_pos\_weight}, mas ele exige um número fixo, calculado antes. Calculado com o treino inteiro, esse número
+incluiria os pacientes da dobra de validação. A classe \cod{XGBClassifierBalanceado} resolve isso calculando a
+proporção a cada treino. KNN, Naive Bayes e MLP não aceitam pesos e rodam sem ajuste nesse modo.
+
+O SMOTE, da biblioteca imbalanced-learn, cria casos sintéticos de sepse a partir de casos vizinhos até igualar as
+classes. Ele cobre os oito algoritmos e é um passo do pipeline aplicado só no treino de cada dobra, nunca na previsão.
+Um teste mostra por que isso importa: com o desfecho embaralhado, o SMOTE aplicado antes da divisão das dobras infla
+artificialmente o desempenho, e o SMOTE dentro do pipeline não.
+
+\subsection{Métricas de desempenho}
+
+O Quadro~5 (p.~45) define F1-score, acurácia, precisão, sensibilidade e AUROC, com o F1 como métrica principal. Todas
+foram implementadas em \cod{validacao.py}, e acrescentou-se a especificidade, citada no Resumo do projeto. O limiar de
+decisão é 0,5. O melhor modelo é o de maior F1, e a AUROC desempata. Os testes conferem as métricas com contas feitas à
+mão.
+
+\subsection{Comparação em tabela e curvas ROC}
+
+O projeto pede a comparação dos algoritmos em tabela e em curvas ROC (p.~46). O arquivo \cod{avaliacao.py} lê as
+comparações dos três modos e escolhe o vencedor entre as 24 combinações de algoritmo e modo, pelo F1 da validação
+aninhada. Só depois disso ele abre o conjunto de teste. Assim, o teste mede o desempenho, mas não interfere na escolha.
+Em seguida, mede as 24 combinações no teste e calcula o intervalo de confiança de 95\% do vencedor por
+\emph{bootstrap}, com 1.000 reamostragens. Ele grava:
+\begin{itemize}
+\item \cod{avaliacao\_teste\_enxuta.csv}: tabela com as métricas das 24 combinações no teste;
+\item \cod{vencedor\_enxuta.json}: o vencedor, suas métricas na validação e no teste, os intervalos de confiança e a
+matriz de confusão;
+\item \cod{roc\_oof\_enxuta\_<modo>.png} e \cod{roc\_teste\_enxuta\_<modo>.png}: curvas ROC dos oito algoritmos no
+treino e no teste, uma figura por modo;
+\item \cod{confusao\_vencedor\_enxuta.png}: matriz de confusão do vencedor no teste.
+\end{itemize}
+
+\subsection{Explicabilidade com SHAP}
+
+O projeto prevê explicar o melhor modelo com valores SHAP (p.~46). O arquivo \cod{explicacao.py} decompõe a
+probabilidade prevista para cada paciente na contribuição de cada variável, com o mesmo método para qualquer
+algoritmo vencedor. Ele grava:
+\begin{itemize}
+\item \cod{importancia\_shap\_enxuta.csv}: a contribuição média de cada variável, da maior para a menor;
+\item \cod{shap\_resumo\_enxuta.png}: gráfico das 15 variáveis mais importantes;
+\item \cod{shap\_caso\_enxuta.png}: explicação de um alerta individual, mostrando quais variáveis levaram o modelo a
+indicar sepse;
+\item \cod{modelo\_final.joblib}: o modelo vencedor completo, da tabela bruta até a probabilidade;
+\item \cod{modelo\_final.json}: descrição do modelo final, com algoritmo, hiperparâmetros, forma de escolha, colunas
+esperadas, limiar e métricas.
+\end{itemize}
+
+O arquivo também tem a função \cod{prever}, que recebe uma tabela de pacientes novos, confere as colunas e devolve a
+probabilidade de sepse de cada um. Os testes em \cod{tests/test\_explicacao.py} verificam que as contribuições somam
+exatamente a probabilidade prevista.
+
+% ------------------------------------------------------------------
+\section{Por que os dados ainda não foram trabalhados}
+
+Os dados reais ainda não existem. A coleta depende da aprovação nos Comitês de Ética e do acesso à API do prontuário
+SOUL MV, com coleta prevista para 2027 (p.~48). Além disso, há dúvidas no projeto, listadas na seção~\ref{sec:duvidas},
+que mudam quais dados devem ser coletados e como.
+
+Por isso, o pipeline foi testado com \textbf{dados sintéticos}: 1.000 pacientes fictícios com as variáveis dos
+Quadros~2 e 3 e 20\% de sepse. Para os algoritmos rodarem, foi feito um pré-processamento mínimo e provisório, com
+preenchimento de valores ausentes, padronização e codificação de categorias. Os resultados obtidos servem só para
+mostrar que o pipeline funciona e não têm valor científico.
+
+% ------------------------------------------------------------------
+\section{Dúvidas sobre o projeto}\label{sec:duvidas}
+
+\begin{enumerate}
+\item \textbf{Qual pergunta o modelo responde.} A introdução fala em prever a sepse com antecedência (p.~13), entre
+todos os internados. Já os exames são colhidos no momento da suspeita de sepse (p.~39 e 40). Para quem nunca teve
+suspeita, não está definido qual exame usar. Se casos e controles tiverem exames de momentos diferentes, o modelo pode
+aprender a reconhecer quem estava sendo investigado, e não a sepse.
+\item \textbf{Variáveis que podem ser consequência da sepse.} As variáveis são colhidas na ``última evolução do
+paciente'' (p.~38), que é posterior ao diagnóstico. Totais de dias de UTIN, de ventilação e de cateter, o resultado da
+hemocultura e o ``tempo até o diagnóstico'' podem entregar o desfecho ao modelo.
+\item \textbf{Excluir ou imputar dados ausentes.} A p.~38 manda excluir prontuários incompletos, e a p.~40 manda
+imputar os valores ausentes.
+\item \textbf{Escores clínicos.} qSOFA e NEWS2 usam pontos de corte de adultos, que quase todo recém-nascido atinge
+(p.~33). O nSOFA, feito para neonatos, é citado no texto, mas não está na ficha de coleta.
+\item \textbf{Critério de sucesso.} O projeto não define o que é ``desempenho adequado'' (p.~14) nem o limiar de
+decisão do modelo.
+\end{enumerate}
+
+% ------------------------------------------------------------------
+\section{O que falta implementar}
+
+\begin{itemize}
+\item Extração dos dados do SOUL MV pela API e cálculo dos escores clínicos (p.~43).
+\item Pré-processamento definitivo, que depende dos dados reais e das dúvidas acima.
+\item SVM e redes profundas, citados no Quadro~4, com a regra de exclusão abaixo de 70\%.
+\item Análise das variáveis associadas à sepse (objetivo específico~1).
+\item Protótipo do sistema de apoio à decisão (objetivo específico~3). Já existe a base: o melhor modelo é salvo e
+tem uma função que devolve a probabilidade de sepse de novos pacientes.
+\end{itemize}
+
+% ------------------------------------------------------------------
+\section{Alterações quando os dados chegarem}
+
+\begin{itemize}
+\item Trocar o gerador de dados sintéticos pela extração real.
+\item Atualizar os nomes e grupos de colunas, concentrados no início de \cod{preprocessamento.py}.
+\item Remover ou recortar no tempo as variáveis que dependerem das respostas às dúvidas 1 e 2.
+\item Refazer o pré-processamento de acordo com os dados reais.
+\item Rodar a grade completa de hiperparâmetros e revisar seus valores.
+\end{itemize}
+
+Os algoritmos, a validação cruzada, o tratamento do desbalanceamento, a avaliação e o SHAP não precisam mudar.
+
+\end{document}
