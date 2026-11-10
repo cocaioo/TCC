@@ -5,7 +5,7 @@ Para cada modelo do catálogo (`modelos.py`), duas estimativas de desempenho:
   busca simples  `GridSearchCV` (5 dobras) no treino inteiro. A nota do vencedor é um pouco OTIMISTA: ele foi escolhido
                  por ser o melhor justamente nessas dobras.
   aninhada       validação cruzada EXTERNA (5 dobras) em volta da busca: em cada rodada, a busca roda só nas 4 dobras
-                 de estudo e o melhor modelo é avaliado na dobra que ficou de fora. É a nota honesta, e as
+                 de estudo e o melhor modelo é avaliado na dobra que ficou de fora. Essas métricas apoiam a comparação, e as
                  probabilidades dessa dobra (fora da dobra) são as que alimentam as curvas ROC do passo 4.
 
 O conjunto de teste NÃO é usado aqui (nem sequer é lido). Os 8 modelos recebem as mesmas dobras externas.

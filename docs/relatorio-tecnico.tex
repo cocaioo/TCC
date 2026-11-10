@@ -74,8 +74,7 @@ lista os requisitos que o projeto define, mostra como cada um foi implementado e
 citadas são as do documento do projeto.
 
 O trabalho concentrou-se na parte do pipeline que \textbf{não depende dos dados}: algoritmos, hiperparâmetros,
-tratamento do desbalanceamento, validação cruzada, avaliação e explicabilidade. O código está no repositório, no ramo
-\cod{create-pipeline}, e tem 79 testes automáticos, todos aprovados.
+tratamento do desbalanceamento, validação cruzada, avaliação e explicabilidade. O código e os testes automatizados estão no repositório. O guia \cod{docs/execucao.md} descreve a execução e os artefatos atuais.
 
 % ==================================================================
 \section{Requisitos implementados}
@@ -120,14 +119,14 @@ Esse espaço fica vazio até os dados reais chegarem.
 
 O projeto prevê a busca com \cod{GridSearchCV} (p.~45). Cada algoritmo tem uma grade enxuta, para os testes, e uma
 grade completa, prevista para os dados reais, com 59 e 325 combinações no total. Testes automáticos treinam cada
-algoritmo com a primeira, a do meio e a última combinação de cada grade. Assim, um hiperparâmetro inválido aparece
-antes de uma busca longa, e não no meio dela.
+algoritmo com a primeira, a do meio e a última combinação de cada grade. Isso verifica essas amostras da grade,
+mas não garante que todas as combinações funcionarão com outros dados.
 
 \subsection{Divisão entre treino e teste}
 
 O arquivo \cod{divisao.py} lê a tabela, confere a coluna de identificação e o desfecho 0/1 e separa 80\% dos pacientes
 para treino e 20\% para teste (p.~45). A divisão é estratificada: as duas partes mantêm a mesma proporção de sepse. O
-teste fica lacrado até a avaliação final.
+teste deve ficar reservado até a avaliação final. Essa disciplina não é imposta pelo código; a explicação volta a ler o teste.
 
 \subsection{Validação cruzada com cinco dobras}
 
@@ -203,7 +202,7 @@ MLP     & --- & \cellcolor{cinzaclaro}sem suporte & \cellcolor{laranjaclaro}SMOT
 \end{tabular}
 \end{table}
 
-O SMOTE cria casos de sepse por interpolação entre casos vizinhos e, como age nos dados, cobre os oito algoritmos. Ele
+O SMOTE cria exemplos da classe minoritária por interpolação entre vizinhos e, como age nos dados, cobre os oito algoritmos. Ele
 roda só nas dobras de treino, como mostra a Figura~\ref{fig:smote}. Um teste automático confirma que, se ele rodasse
 antes da divisão, o desempenho ficaria artificialmente alto.
 
@@ -227,12 +226,12 @@ antes da divisão, o desempenho ficaria artificialmente alto.
 \subsection{Métricas de desempenho}
 
 As métricas do Quadro~5 (p.~45) estão em \cod{validacao.py}: F1-score, acurácia, precisão, sensibilidade e AUROC,
-além da especificidade, citada no Resumo do projeto. O F1, com limiar 0,5, escolhe o melhor modelo, e a AUROC desempata.
+além da especificidade, citada no Resumo do projeto. O F1 calculado com \cod{predict} escolhe o melhor modelo, e a AUROC desempata.
 Os testes conferem as métricas com contas feitas à mão.
 
 \subsection{Comparação em tabela e curvas ROC}
 
-O arquivo \cod{avaliacao.py} escolhe o vencedor entre as 24 combinações de algoritmo e modo pela validação aninhada e só
+O arquivo \cod{avaliacao.py} escolhe o vencedor entre as combinações de algoritmo e modo disponíveis para a grade pela validação aninhada e só
 depois abre o teste. Em seguida, mede todas as combinações no teste e calcula o intervalo de confiança de 95\% do
 vencedor por \emph{bootstrap}. Gera também a tabela comparativa, as curvas ROC e a matriz de confusão pedidas na
 p.~46. Ainda não foi executado com dados reais.
@@ -247,12 +246,12 @@ reais.
 % ==================================================================
 \section{Por que os dados ainda não foram trabalhados}
 
-Os dados reais ainda não existem. A coleta depende da aprovação nos Comitês de Ética e do acesso à API do prontuário
+Os dados reais ainda não estão disponíveis neste repositório. A coleta depende da aprovação nos Comitês de Ética e do acesso à API do prontuário
 SOUL MV e está prevista para 2027 (p.~48). Além disso, as dúvidas da seção~\ref{sec:duvidas} mudam quais dados devem
 ser coletados e como. Por isso, o pré-processamento não foi implementado, e não há dados no repositório.
 
 Os testes automáticos usam uma tabela numérica genérica, criada na memória durante o teste e sem nenhum significado
-clínico. Ela serve só para verificar que os algoritmos treinam e que nada vaza entre as dobras. Nenhum número dela é
+clínico. Ela serve para verificar a mecânica dos algoritmos e detectar alguns casos de vazamento entre as dobras; não prova ausência de todo vazamento possível. Nenhum número dela é
 resultado do estudo.
 
 % ==================================================================
@@ -332,6 +331,6 @@ decisão do modelo.
 \item Rodar a grade completa de hiperparâmetros e revisar seus valores.
 \end{itemize}
 
-Os algoritmos, a validação cruzada, o tratamento do desbalanceamento, a avaliação e o SHAP não precisam mudar.
+Essas etapas também devem ser reavaliadas diante dos dados reais e das decisões metodológicas.
 
 \end{document}

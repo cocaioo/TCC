@@ -33,8 +33,9 @@ def carregar(caminho):
 
 
 def dividir(df, teste=0.20, seed=42):
-    """Separa em treino e teste (80/20, p. 45 do projeto), estratificado pelo desfecho: as duas partes mantêm a mesma
-    proporção de sepse. O conjunto de teste só deve ser aberto uma vez, na avaliação final."""
+    """Separa em treino e teste (80/20, p. 45 do projeto), estratificado pelo desfecho: as duas partes mantêm
+    proporções aproximadamente iguais de sepse. O teste deve ser reservado para a avaliação final; o código não impede
+    leituras posteriores, inclusive pela etapa de explicação."""
     treino, teste_df = train_test_split(df, test_size=teste, stratify=df[COL_ALVO], random_state=seed)
     return treino.reset_index(drop=True), teste_df.reset_index(drop=True)
 

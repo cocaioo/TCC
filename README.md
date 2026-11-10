@@ -11,12 +11,14 @@ O repositório contém só a parte do pipeline que **não depende dos dados**: a
 estratificadas, o catálogo dos 8 algoritmos do Quadro 4, as grades de hiperparâmetros, o tratamento do desbalanceamento,
 as métricas do Quadro 5, a avaliação final e a explicação com SHAP.
 
-Não há dados no repositório, nem reais nem sintéticos. Os dados reais dependem de aprovação em comitê de ética, do
+Não há base de dados versionada no repositório. Os testes geram dados genéricos em memória e podem gravar arquivos em
+diretórios temporários. Os dados reais dependem de aprovação em comitê de ética, do
 conector com o prontuário e de definições de desenho ainda em aberto (ver `docs/entendimento-do-projeto.md`). O
 **pré-processamento** (limpeza, valores ausentes, codificação e escolha das variáveis) depende desses dados e ainda não
 existe: o pipeline tem um espaço reservado para ele, e até lá espera uma tabela já numérica e sem ausentes.
 
-O relatório técnico com o que foi desenvolvido está em `docs/relatorio-tecnico.pdf` (fonte em `docs/relatorio-tecnico.tex`).
+O [relatório técnico](docs/relatorio-tecnico.pdf) resume a implementação e as questões do estudo. O
+[material de estudo](docs/material-de-estudo.pdf) explica os conceitos; suas fontes editáveis estão na pasta `docs/`.
 
 ## Módulos
 
@@ -25,27 +27,28 @@ O relatório técnico com o que foi desenvolvido está em `docs/relatorio-tecnic
 | `divisao.py` | Lê a tabela (uma linha por recém-nascido, identificador `id_prontuario` e desfecho `sepse_tardia` 0/1) e divide em treino (80%) e teste (20%), estratificado pelo desfecho |
 | `modelos.py` | Catálogo dos 8 algoritmos (RL, NB, KNN, DT, RF, GB, XGBoost, MLP), duas grades de hiperparâmetros por algoritmo, três modos de desbalanceamento (nenhum, pesos de classe, SMOTE) e montagem dos pipelines |
 | `validacao.py` | Busca em grade (`GridSearchCV`) e validação cruzada estratificada com 5 dobras, simples e aninhada, só com o treino |
-| `avaliacao.py` | Escolhe o melhor modelo pela validação, abre o teste uma única vez, calcula intervalos de 95% por bootstrap e gera curvas ROC e matriz de confusão |
+| `avaliacao.py` | Escolhe o melhor modelo pela validação antes de ler o teste, calcula intervalos de 95% por bootstrap e gera curvas ROC e matriz de confusão |
 | `explicacao.py` | Valores SHAP do melhor modelo, modelo final salvo (pipeline e descrição em JSON) e função `prever` |
 
 ## Princípios metodológicos
 
-- O conjunto de teste permanece lacrado até a avaliação final e é aberto uma única vez.
-- Tudo o que é aprendido dos dados (pré-processamento, pesos de classe, exemplos do SMOTE) vem apenas do treino de cada
-  rodada; a dobra de validação não influencia o ajuste. Isso é coberto por testes que falham se o vazamento reaparecer.
-- O desempenho é estimado de duas formas: busca simples (nota otimista do vencedor) e validação cruzada aninhada (nota
-  honesta), que é a usada para comparar os algoritmos.
-- O F1-score (limiar 0,5) é a métrica principal de seleção, conforme o projeto; acurácia, precisão, sensibilidade,
+- O teste deve permanecer reservado até a avaliação final. O código permite execuções repetidas e `explicacao.py` volta a ler o teste.
+- Na validação, o pipeline ajusta transformações fornecidas, pesos e SMOTE usando o treino de cada rodada. Os testes
+  verificam alguns cenários de vazamento; a seleção e o preparo dos dados de entrada ainda precisam evitar outros.
+- O desempenho é estimado pela busca simples e pela validação cruzada aninhada, usada para comparar os algoritmos.
+  Selecionar o melhor entre várias alternativas também pode favorecer uma estimativa de validação otimista.
+- O F1-score calculado com `predict` é a métrica principal de seleção; acurácia, precisão, sensibilidade,
   especificidade e AUROC também são registradas.
 - Nos modelos sem suporte a pesos de classe no scikit-learn (KNN, NB e MLP), esse modo não aplica ajuste; o SMOTE cobre
   os 8 modelos e roda só no treino de cada ajuste.
 
 ## Como executar
 
-Requer Python 3.11 ou superior. Os comandos são para o Windows (PowerShell), a partir da pasta do projeto.
+Os comandos são para Windows (PowerShell), a partir da pasta do projeto. Veja o [guia de execução](docs/execucao.md) para contratos, saídas e limitações.
 
 ```powershell
-# Instalar as dependências (uma vez)
+# Criar o ambiente virtual e instalar as dependências
+python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 
 # Listar o catálogo de modelos (combinações das grades e ajuste de desbalanceamento de cada algoritmo)
@@ -56,7 +59,8 @@ Requer Python 3.11 ou superior. Os comandos são para o Windows (PowerShell), a 
 ```
 
 Os testes usam uma tabela numérica genérica, criada na memória por `tests/dados_genericos.py`, sem nenhum significado
-clínico. Ela serve só para verificar a mecânica do pipeline; nada é gravado e nenhum número dela é resultado do estudo.
+clínico. Ela serve só para verificar a mecânica do pipeline; alguns testes gravam arquivos temporários e nenhum número
+dela é resultado do estudo.
 
 Quando houver dados reais e pré-processamento, a sequência de execução será: `divisao.py` (gera treino e teste),
 `validacao.py` (uma vez por modo de desbalanceamento), `avaliacao.py` e `explicacao.py`. Cada um tem `--help`.
@@ -71,8 +75,9 @@ avaliacao.py               avaliação final no teste, curvas ROC e matriz de co
 explicacao.py              valores SHAP do vencedor, modelo final salvo e função prever
 tests/                     testes automáticos (pytest), um arquivo por módulo
 docs/                      entendimento do projeto, relatório técnico e material de estudo
-Projeto_sepse_07_07.pdf    projeto de pesquisa
+Projeto_sepse_07_07.pdf    projeto de pesquisa (arquivo local, ignorado pelo git)
 requirements.txt           dependências
 ```
 
-A pasta `data/` está no `.gitignore`: os dados reais serão privados e nunca vão para o git.
+A pasta `data/` está no `.gitignore`. Mantenha dados privados fora do controle de versão; essa regra não impede uma
+inclusão forçada ou o armazenamento em outra pasta.

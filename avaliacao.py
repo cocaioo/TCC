@@ -1,4 +1,4 @@
-"""Avaliação final (etapa 4 do KDD): o conjunto de TESTE é aberto aqui, uma única vez.
+"""Avaliação final (etapa 4 do KDD): o conjunto de TESTE é lido depois da escolha pela validação.
 
 Entradas, geradas por `validacao.py` só com o treino (uma rodada por modo de desbalanceamento):
   comparacao_<grade>_<modo>.csv          métricas da validação aninhada de cada modelo
@@ -11,7 +11,8 @@ Ordem, que é o que protege o teste:
   3. intervalo de 95% por bootstrap para as métricas do vencedor no teste;
   4. curvas ROC (fora da dobra e teste), uma figura por modo, e matriz de confusão do vencedor.
 
-Limiar de decisão: 0,5 (o `predict` dos modelos), como na validação.
+As métricas pontuais usam `predict`; bootstrap e matriz de confusão usam probabilidade > 0,5. No empate exato
+em 0,5, essas regras podem diferir. A reserva do teste e o controle de execuções repetidas são responsabilidade do usuário.
 
 Uso:
     python avaliacao.py --grade enxuta
@@ -148,7 +149,7 @@ def avaliar(resultados_dir, caminho_teste, grade="enxuta", n_bootstrap=1000, see
     tabela = pd.DataFrame(linhas)[["modo", "modelo", *METRICAS_TESTE, "f1_validacao", "vencedor"]]
 
     proba_v = probas[modo_v][modelo_v]
-    previsao_v = (proba_v > 0.5).astype(int)  # = predict de um classificador binário
+    previsao_v = (proba_v > 0.5).astype(int)  # empate em 0,5 é negativo, mesmo se predict o classificar de outro modo
     return {
         "vencedor": (modelo_v, modo_v), "modos": modos, "comparacoes": comparacoes, "tabela_teste": tabela,
         "probas_teste": probas, "y_teste": y.to_numpy(),
@@ -267,7 +268,7 @@ def imprimir(r):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Avaliação final no conjunto de teste (aberto uma única vez).")
+    parser = argparse.ArgumentParser(description="Avaliação final no conjunto de teste, após seleção na validação.")
     parser.add_argument("--resultados-dir", type=Path, default=Path("data/resultados"))
     parser.add_argument("--teste", type=Path, default=Path("data/teste.csv"))
     parser.add_argument("--grade", choices=GRADES, default="enxuta")

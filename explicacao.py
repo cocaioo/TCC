@@ -8,7 +8,8 @@ pacientes de referência) mais uma contribuição por variável; as contribuiç�
 explicador por permutação na escala de probabilidade, o mesmo para os 8 algoritmos, sobre as variáveis já
 pré-processadas (as que o modelo enxerga). Referência: até 100 pacientes do treino; explicados: os pacientes do teste.
 
-Modelo final: `modelo_final.joblib` (o pipeline inteiro, do CSV bruto à probabilidade) e `modelo_final.json` (o que é,
+Modelo final: `modelo_final.joblib` (pipeline da tabela de entrada à probabilidade; o pré-processamento pode estar vazio)
+e `modelo_final.json` (o que é,
 como foi escolhido, quais colunas espera, limiar e métricas). `prever` mostra como outro programa o usaria.
 
 Uso:

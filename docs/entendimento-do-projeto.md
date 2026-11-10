@@ -92,8 +92,8 @@ respostas aos pontos da seção 4.
 | `GridSearchCV` e validação cruzada com k = 5 | Implementados (validação simples e aninhada) |
 | Pesos de classe e reamostragem sintética (SMOTE) | Implementados |
 | Métricas do Quadro 5 | Implementadas |
-| Avaliação final no conjunto de teste e curvas ROC | Implementada, nunca executada com dados reais |
-| Explicabilidade com SHAP | Implementada, nunca executada com dados reais |
+| Avaliação final no conjunto de teste e curvas ROC | Implementada; não há resultados com dados reais versionados |
+| Explicabilidade com SHAP | Implementada; não há resultados com dados reais versionados |
 | Pré-processamento | A definir |
 
 O relatório técnico, em `docs/relatorio-tecnico.pdf`, descreve como cada requisito foi implementado.
